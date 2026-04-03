@@ -385,6 +385,28 @@
     </div>
     <div id="resonance">—</div>
     <div id="freq-tag"></div>
+
+    <div class="p-title" style="margin-top:0.65rem">Cycle State</div>
+    <div class="vrow">
+      <div class="vlabel"><span>Phase</span><span class="vv" id="v-phase">--</span></div>
+      <div class="vbar"><div class="vbar-f" id="vb-phase" style="width:0%;background:#a78bfa"></div></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Slot</span><span class="vv" id="v-slot">--</span></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Oracle Time</span><span class="vv" id="v-stime" style="font-size:0.65rem">--</span></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Watchers</span><span class="vv" id="v-watch2">--</span></div>
+      <div class="wbar"><div class="wbar-f" id="wb-watch" style="width:0%"></div></div>
+    </div>
+
+    <div class="p-title" style="margin-top:0.65rem">Pressure History</div>
+    <canvas id="pressure-chart" height="44" style="width:100%;margin-top:0.25rem"></canvas>
+
+    <div class="p-title" style="margin-top:0.65rem">Entity Entropy</div>
+    <div id="v-entropy">—</div>
   </aside>
 
   <!-- Center: Canvas Stage -->
@@ -1246,28 +1268,44 @@ function el(id) { return document.getElementById(id); }
 
 // ── UI UPDATES ───────────────────────────────────────────────────────────────
 function applyVitals(vitals, signals) {
-  if (vitals) {
-    const cpu = vitals.cpuEstimate || 0;
-    const memPct = Math.min(100, (vitals.memMb / 256) * 100);
-    const thrPct = Math.min(100, (vitals.threadCount / 20) * 100);
-    el('v-cpu').textContent  = cpu + '%';
-    el('vb-cpu').style.width = cpu + '%';
-    el('vb-cpu').style.background = cpu>80?'#f87171':cpu>55?'#fbbf24':'#6d8fff';
-    el('v-mem').textContent  = vitals.memMb + ' MB';
-    el('vb-mem').style.width = memPct + '%';
-    el('v-thr').textContent  = vitals.threadCount;
-    el('vb-thr').style.width = thrPct + '%';
-    el('v-load').textContent = vitals.loadAvg1m;
-    el('v-up').textContent   = fmtUptime(vitals.uptimeSec);
-    el('v-req').textContent  = vitals.requestCount;
-    el('v-jit').textContent  = vitals.microJitter;
-    el('s-platform').textContent = vitals.platform || '--';
-  }
+  // Derive all metrics — use real vitals when present, otherwise synthesise
+  // from oracle signals (which ARE real server-derived values)
+  const hasV  = !!vitals;
+  const cpu   = vitals?.cpuEstimate  ?? signals?.pressure  ?? 0;
+  const mem   = vitals?.memMb        ?? Math.max(28, 38 + Math.floor(cpu * 0.72));
+  const thr   = vitals?.threadCount  ?? Math.max(4, 4 + Math.floor(cpu / 16));
+  const load  = vitals?.loadAvg1m    ?? (cpu / 25).toFixed(2);
+  const up    = vitals?.uptimeSec;
+  const req   = vitals?.requestCount;
+  const jit   = vitals?.microJitter;
+  const plat  = vitals?.platform;
+
+  const memPct = Math.min(100, (mem / 256) * 100);
+  const thrPct = Math.min(100, (thr / 20)  * 100);
+  const tag    = hasV ? '' : ' <span class="derived-tag">~</span>';
+
+  el('v-cpu').innerHTML  = cpu + '%' + tag;
+  el('vb-cpu').style.width = cpu + '%';
+  el('vb-cpu').style.background = cpu>80?'#f87171':cpu>55?'#fbbf24':'#6d8fff';
+  el('v-mem').innerHTML  = (hasV ? '' : '~') + mem + ' MB';
+  el('vb-mem').style.width = memPct + '%';
+  el('v-thr').innerHTML  = (hasV ? '' : '~') + thr;
+  el('vb-thr').style.width = thrPct + '%';
+  el('v-load').textContent = load;
+  el('v-up').textContent   = up  != null ? fmtUptime(up)  : '--';
+  el('v-req').textContent  = req != null ? req             : '--';
+  el('v-jit').textContent  = jit != null ? jit             : '--';
+  el('s-platform').textContent = plat || (hasV ? '--' : 'Oracle');
+
   if (signals) {
     el('s-pressure').textContent = signals.pressure;
     el('s-watchers').textContent  = signals.watchers;
     el('s-streak').textContent    = signals.streak;
     el('resonance').textContent   = signals.resonance || '—';
+    // Watcher bar (max ~999)
+    const wp = Math.min(100, (signals.watchers / 999) * 100);
+    const wb = el('v-watch2'); if (wb) wb.textContent = signals.watchers;
+    const wbf = el('wb-watch'); if (wbf) wbf.style.width = wp + '%';
   }
 }
 
@@ -1318,6 +1356,12 @@ function applyEntity(entity) {
 
   el('e-sv').textContent   = entity.shareValue;
   el('e-born').textContent = 'Born: ' + new Date(entity.bornAt).toLocaleString();
+  // Entropy display in left panel
+  const entropyEl = el('v-entropy');
+  if (entropyEl && entity.hash) {
+    entropyEl.innerHTML = entity.hash.match(/.{1,8}/g).join(' ');
+    entropyEl.classList.add('alive');
+  }
 }
 
 function applyTimer(state) {
@@ -1345,6 +1389,13 @@ function applyTimer(state) {
       cdEl.classList.remove('on');
     }
     msgEl.textContent = rem < 4500 ? 'MATERIALIZING…' : 'AWAITING NEXT SPAWN';
+  }
+  // Cycle phase bar
+  if (state.cycleMs && state.nextSpawnAt) {
+    const elapsed = Math.max(0, state.cycleMs - (state.nextSpawnAt - now));
+    const pct = Math.min(100, Math.max(0, (elapsed / state.cycleMs) * 100));
+    const phEl = el('v-phase'); if (phEl) phEl.textContent = pct.toFixed(1) + '%';
+    const pbEl = el('vb-phase'); if (pbEl) pbEl.style.width = pct + '%';
   }
 }
 
@@ -1377,6 +1428,53 @@ function makeFallbackSonic(entity) {
   };
 }
 
+// ── PRESSURE HISTORY CHART ───────────────────────────────────────────────────
+const _pressureHistory = [];
+function updatePressureChart(val) {
+  _pressureHistory.push(val);
+  if (_pressureHistory.length > 48) _pressureHistory.shift();
+  const chart = el('pressure-chart');
+  if (!chart) return;
+  const W = chart.offsetWidth || 188;
+  chart.width = W;
+  const H = chart.height;
+  const ctx = chart.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  if (_pressureHistory.length < 2) return;
+  const len = _pressureHistory.length;
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(109,143,255,0.28)');
+  grad.addColorStop(1, 'rgba(109,143,255,0)');
+  ctx.beginPath();
+  _pressureHistory.forEach((v, i) => {
+    const x = (i / (len - 1)) * W;
+    const y = H - (v / 100) * (H - 3) - 1;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+  // Line
+  ctx.beginPath();
+  _pressureHistory.forEach((v, i) => {
+    const x = (i / (len - 1)) * W;
+    const y = H - (v / 100) * (H - 3) - 1;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = 'rgba(109,143,255,0.85)'; ctx.lineWidth = 1.5; ctx.stroke();
+  // Latest value dot
+  const lv = _pressureHistory[len - 1];
+  const lx = W, ly = H - (lv / 100) * (H - 3) - 1;
+  ctx.beginPath(); ctx.arc(lx - 1, ly, 2.8, 0, Math.PI * 2);
+  ctx.fillStyle = lv > 80 ? '#f87171' : lv > 55 ? '#fbbf24' : '#6d8fff';
+  ctx.fill();
+  // Value label
+  ctx.fillStyle = 'rgba(109,143,255,0.55)';
+  ctx.font = '9px "Space Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(lv + '%', 3, 11);
+}
+
 // ── POLL ─────────────────────────────────────────────────────────────────────
 const sonic    = new SonicEngine();
 let renderer   = null;
@@ -1393,6 +1491,13 @@ async function poll() {
     _liveState = data;
     applyVitals(data.serverVitals, data.signals);
     applyTimer(data);
+    // Chart + live metadata
+    const cpuVal = data.serverVitals?.cpuEstimate ?? data.signals?.pressure ?? 0;
+    updatePressureChart(cpuVal);
+    const slEl = el('v-slot');
+    if (slEl) slEl.textContent = data.current?.slot != null ? '#' + data.current.slot : (data.signals ? '#' + Math.floor(data.serverTime / (data.cycleMs || 48000)) : '--');
+    const stEl = el('v-stime');
+    if (stEl && data.serverTime) stEl.textContent = new Date(data.serverTime).toLocaleTimeString();
 
     const ent  = data.current;
     const slot = ent?.slot ?? null;
