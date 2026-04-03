@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/shardborn-live-spawn.html"
+    },
+    {
+      "source": "/favicon.ico",
+      "destination": "/CharacterConcept.png"
+    }
+  ]
+}

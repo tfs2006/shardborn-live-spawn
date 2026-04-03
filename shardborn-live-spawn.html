@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SHARDBORN · Live Spawn Oracle</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+    :root {
+      --bg: #020308;
+      --surface: #080a12;
+      --border: rgba(255,255,255,0.055);
+      --text: #c4ccdf;
+      --dim: #4e5570;
+      --accent: #6d8fff;
+      --claim: #00e5a0;
+      --danger: #ff4d6d;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%; min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── ENTRY ──────────────────────────────────────────────────── */
+    #entry {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: radial-gradient(ellipse 100% 80% at 50% 65%,
+        #0c0e1e 0%, #020308 70%);
+    }
+    #entry-stars {
+      position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+    }
+    #entry h1 {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(2.4rem, 9vw, 5.2rem);
+      letter-spacing: 0.42em;
+      color: #fff;
+      text-shadow: 0 0 80px rgba(109,143,255,0.55), 0 0 200px rgba(109,143,255,0.18);
+      margin-bottom: 0.6rem;
+      position: relative;
+    }
+    #entry .sub {
+      font-size: 0.78rem; letter-spacing: 0.25em;
+      color: var(--dim); text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+    #entry .tagline {
+      max-width: 440px; text-align: center;
+      color: #363c52;
+      font-size: 0.82rem; line-height: 1.9; margin-bottom: 2.8rem;
+    }
+    #enter-btn {
+      padding: 0.85rem 3.2rem;
+      background: transparent;
+      border: 1px solid rgba(109,143,255,0.45);
+      color: var(--accent);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.78rem; letter-spacing: 0.3em;
+      cursor: pointer; text-transform: uppercase;
+      transition: all 0.35s; outline: none;
+    }
+    #enter-btn:hover {
+      background: rgba(109,143,255,0.07);
+      border-color: rgba(109,143,255,0.85);
+      box-shadow: 0 0 36px rgba(109,143,255,0.25);
+    }
+    #entry .audio-note {
+      margin-top: 1.2rem; font-size: 0.65rem;
+      color: #2a2f42; letter-spacing: 0.12em; text-align: center;
+    }
+
+    /* ── APP LAYOUT ─────────────────────────────────────────────── */
+    #app {
+      position: fixed; inset: 0;
+      display: grid;
+      grid-template-rows: 50px 1fr;
+      grid-template-columns: 210px 1fr 250px;
+      opacity: 0; transition: opacity 1.2s;
+      pointer-events: none;
+    }
+    #app.visible { opacity: 1; pointer-events: all; }
+
+    /* ── HEADER ─────────────────────────────────────────────────── */
+    #hdr {
+      grid-column: 1 / -1; grid-row: 1;
+      display: flex; align-items: center;
+      padding: 0 1.4rem; gap: 1.2rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2,3,8,0.92);
+      backdrop-filter: blur(10px);
+    }
+    .logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.9rem; letter-spacing: 0.42em;
+      color: #fff; flex-shrink: 0;
+      text-shadow: 0 0 20px rgba(109,143,255,0.4);
+    }
+    .logo span { color: var(--accent); }
+    .oracle-pill {
+      display: flex; align-items: center; gap: 0.45rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.62rem; letter-spacing: 0.18em;
+      color: var(--dim); text-transform: uppercase;
+    }
+    .o-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--dim); transition: background 0.6s, box-shadow 0.6s;
+      flex-shrink: 0;
+    }
+    .o-dot.live { background: var(--claim); box-shadow: 0 0 8px var(--claim); }
+    .o-dot.dead { background: var(--danger); }
+    .spawn-badge {
+      padding: 0.18rem 0.65rem; border-radius: 2px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase;
+      display: none;
+      background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.35);
+      color: var(--claim);
+      animation: blink 2s ease-in-out infinite;
+    }
+    .spawn-badge.on { display: inline-block; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.45} }
+    .hdr-space { flex: 1; }
+    #hdr-timer {
+      font-family: 'Space Mono', monospace; font-size: 0.78rem;
+      color: var(--text); letter-spacing: 0.08em;
+    }
+    #hdr-timer .lbl { font-size: 0.6rem; color: var(--dim); letter-spacing: 0.18em; margin-right: 0.35rem; }
+
+    /* ── LEFT VITALS ────────────────────────────────────────────── */
+    #vitals {
+      grid-column: 1; grid-row: 2;
+      border-right: 1px solid var(--border);
+      padding: 1.4rem 1.1rem;
+      display: flex; flex-direction: column; gap: 1.1rem;
+      overflow-y: auto; overflow-x: hidden;
+      background: rgba(2,3,8,0.65);
+    }
+    .p-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.58rem; letter-spacing: 0.3em;
+      color: var(--dim); text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.55rem;
+    }
+    .vrow { display: flex; flex-direction: column; gap: 0.28rem; }
+    .vlabel {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 0.68rem; color: var(--dim);
+      text-transform: uppercase; letter-spacing: 0.09em;
+    }
+    .vv { font-family: 'Space Mono', monospace; color: var(--text); font-size: 0.72rem; }
+    .vbar { height: 2px; background: rgba(255,255,255,0.055); border-radius: 2px; overflow: hidden; }
+    .vbar-f {
+      height: 100%; border-radius: 2px;
+      transition: width 1.4s ease, background 1.2s ease;
+      background: var(--accent);
+    }
+    .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+    .chip {
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border); padding: 0.45rem 0.55rem;
+    }
+    .chip .cl { font-size: 0.56rem; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+    .chip .cv { font-family: 'Space Mono', monospace; font-size: 0.82rem; color: var(--text); margin-top: 0.12rem; }
+    #resonance { font-size: 0.68rem; font-style: italic; color: var(--dim); text-align: center; padding: 0.25rem 0; }
+    #freq-tag { font-size: 0.62rem; color: var(--accent); font-family: 'Space Mono', monospace; text-align: center; letter-spacing: 0.05em; min-height: 1.2rem; }
+
+    /* ── CANVAS CENTER ──────────────────────────────────────────── */
+    #stage {
+      grid-column: 2; grid-row: 2;
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; background: var(--bg);
+    }
+    #stage canvas { display: block; }
+    #stage-overlay {
+      position: absolute; bottom: 1.6rem; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 0.7rem;
+      z-index: 5; pointer-events: none;
+    }
+    #stage-overlay > * { pointer-events: all; }
+    #countdown {
+      font-family: 'Space Mono', monospace;
+      font-size: 3rem; color: rgba(255,255,255,0.1);
+      letter-spacing: 0.18em;
+      display: none; user-select: none;
+    }
+    #countdown.on { display: block; }
+    #stage-msg {
+      font-family: 'Space Mono', monospace; font-size: 0.7rem;
+      color: var(--dim); letter-spacing: 0.18em; text-transform: uppercase;
+      user-select: none;
+    }
+    #claim-form {
+      display: flex; gap: 0.5rem;
+      opacity: 0; pointer-events: none; transition: opacity 0.55s;
+    }
+    #claim-form.on { opacity: 1; pointer-events: all; }
+    #cname {
+      padding: 0.5rem 0.8rem; width: 190px;
+      background: rgba(0,229,160,0.045); border: 1px solid rgba(0,229,160,0.28);
+      color: var(--claim); font-family: 'Space Grotesk', sans-serif; font-size: 0.82rem;
+      outline: none; transition: border-color 0.3s;
+    }
+    #cname::placeholder { color: rgba(0,229,160,0.25); }
+    #cname:focus { border-color: rgba(0,229,160,0.75); }
+    #claim-btn {
+      padding: 0.5rem 1.3rem;
+      background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.45);
+      color: var(--claim); font-family: 'Space Mono', monospace;
+      font-size: 0.7rem; letter-spacing: 0.22em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.3s;
+    }
+    #claim-btn:hover { background: rgba(0,229,160,0.18); box-shadow: 0 0 22px rgba(0,229,160,0.18); }
+    #claim-btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* ── RIGHT ENTITY ───────────────────────────────────────────── */
+    #entity-panel {
+      grid-column: 3; grid-row: 2;
+      border-left: 1px solid var(--border);
+      padding: 1.4rem 1.1rem;
+      display: flex; flex-direction: column; gap: 0.85rem;
+      overflow-y: auto; overflow-x: hidden;
+      background: rgba(2,3,8,0.65);
+    }
+    #e-name { font-family: 'Space Mono', monospace; font-size: 1rem; color: #fff; }
+    #e-id   { font-family: 'Space Mono', monospace; font-size: 0.62rem; color: var(--dim); margin-top: 0.18rem; letter-spacing: 0.1em; }
+    .r-badge {
+      display: inline-block; padding: 0.18rem 0.7rem;
+      font-family: 'Space Mono', monospace; font-size: 0.62rem;
+      letter-spacing: 0.2em; text-transform: uppercase;
+    }
+    .tgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+    .tcell {
+      padding: 0.45rem 0.5rem;
+      background: rgba(255,255,255,0.018); border: 1px solid var(--border);
+    }
+    .tl { font-size: 0.56rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+    .tv { font-size: 0.78rem; color: var(--text); margin-top: 0.12rem; }
+    #s-hz { font-family: 'Space Mono', monospace; font-size: 1.35rem; color: var(--accent); }
+    #s-ftag { font-size: 0.62rem; color: var(--accent); font-family: 'Space Mono', monospace; letter-spacing: 0.05em; }
+    #s-detail { font-size: 0.68rem; color: var(--dim); line-height: 1.85rem; }
+    #s-detail strong { color: var(--text); }
+    .sv-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      border-top: 1px solid var(--border); padding-top: 0.5rem;
+    }
+    .sv-row .svl { font-size: 0.62rem; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+    .sv-row .svv { font-family: 'Space Mono', monospace; font-size: 1.05rem; color: var(--text); }
+    #e-born { font-size: 0.62rem; color: var(--dim); }
+    #no-spawn {
+      display: flex; flex-direction: column; gap: 0.55rem;
+    }
+    #no-spawn .ns { font-size: 0.72rem; color: var(--dim); line-height: 1.7; }
+
+    /* RARITY COLOURS */
+    .rc-Common    { color:#9CA3AF; border-color:rgba(156,163,175,.4); background:rgba(156,163,175,.07); }
+    .rc-Uncommon  { color:#34D399; border-color:rgba(52,211,153,.4);  background:rgba(52,211,153,.07); }
+    .rc-Rare      { color:#60A5FA; border-color:rgba(96,165,250,.4);  background:rgba(96,165,250,.07); }
+    .rc-Epic      { color:#C084FC; border-color:rgba(192,132,252,.4); background:rgba(192,132,252,.07); }
+    .rc-Legendary { color:#FBBF24; border-color:rgba(251,191,36,.4);  background:rgba(251,191,36,.07); }
+    .rc-Mythic    { color:#F87171; border-color:rgba(248,113,113,.5); background:rgba(248,113,113,.1); }
+
+    /* ── CLAIM SUCCESS OVERLAY ─────────────────────────────────── */
+    #claimed-overlay {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.88);
+      opacity: 0; pointer-events: none; transition: opacity 0.6s;
+    }
+    #claimed-overlay.on { opacity: 1; pointer-events: all; }
+    #claimed-overlay h2 {
+      font-family: 'Space Mono', monospace; font-size: 1.9rem;
+      color: var(--claim); letter-spacing: 0.3em; margin-bottom: 1.1rem;
+      text-shadow: 0 0 40px rgba(0,229,160,0.4);
+    }
+    #claimed-summary { text-align: center; color: var(--text); line-height: 2; }
+    #dismiss {
+      margin-top: 2rem; padding: 0.55rem 2rem;
+      background: transparent; border: 1px solid rgba(255,255,255,0.15);
+      color: var(--dim); font-family: 'Space Mono', monospace;
+      font-size: 0.72rem; letter-spacing: 0.22em; cursor: pointer;
+      transition: all 0.3s;
+    }
+    #dismiss:hover { border-color: rgba(255,255,255,0.35); color: var(--text); }
+
+    /* ── SCROLLBAR ─────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+
+    /* ── RESPONSIVE ────────────────────────────────────────────── */
+    @media (max-width: 860px) {
+      body { overflow-y: auto; }
+      #app {
+        position: relative;
+        grid-template-rows: 50px minmax(60vw,420px) auto auto;
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+      #vitals  { grid-column:1; grid-row:3; border-right:none; border-top:1px solid var(--border); }
+      #stage   { grid-column:1; grid-row:2; min-height:60vw; }
+      #entity-panel { grid-column:1; grid-row:4; border-left:none; border-top:1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── ENTRY ────────────────────────────────────────────────────────── -->
+<div id="entry">
+  <canvas id="entry-stars"></canvas>
+  <h1>SHARD<span>BORN</span></h1>
+  <p class="sub">Live Oracle · Generative Entity Spawn</p>
+  <p class="tagline">
+    Every entity that emerges here is born from the living breath of the server —<br>
+    its form, its sound, its soul shaped by real machine state at this exact moment.<br>
+    Once the window closes, it is gone forever.
+  </p>
+  <button id="enter-btn">ENTER THE ORACLE</button>
+  <p class="audio-note">🎧 Headphones recommended — binaural sound is generated for you at every spawn</p>
+</div>
+
+<!-- ── APP ──────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <header id="hdr">
+    <div class="logo">SHARD<span>BORN</span></div>
+    <div class="oracle-pill">
+      <div class="o-dot" id="o-dot"></div>
+      <span id="o-txt">CONNECTING</span>
+    </div>
+    <div class="spawn-badge" id="spawn-badge">SPAWN WINDOW OPEN</div>
+    <div class="hdr-space"></div>
+    <div id="hdr-timer"><span class="lbl">NEXT IN</span><span id="t-val">--:--</span></div>
+  </header>
+
+  <!-- Left: Server Vitals -->
+  <aside id="vitals">
+    <div class="p-title">Server Organism</div>
+
+    <div class="vrow">
+      <div class="vlabel"><span>CPU Pressure</span><span class="vv" id="v-cpu">--</span></div>
+      <div class="vbar"><div class="vbar-f" id="vb-cpu" style="width:0%"></div></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Memory</span><span class="vv" id="v-mem">-- MB</span></div>
+      <div class="vbar"><div class="vbar-f" id="vb-mem" style="width:0%;background:#a78bfa"></div></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Threads</span><span class="vv" id="v-thr">--</span></div>
+      <div class="vbar"><div class="vbar-f" id="vb-thr" style="width:0%;background:#34d399"></div></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Load Avg 1m</span><span class="vv" id="v-load">--</span></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Uptime</span><span class="vv" id="v-up">--</span></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Requests</span><span class="vv" id="v-req">--</span></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>µ-Jitter</span><span class="vv" id="v-jit">--</span></div>
+    </div>
+
+    <div class="p-title" style="margin-top:0.4rem">Oracle Signals</div>
+    <div class="sigs">
+      <div class="chip"><div class="cl">Pressure</div><div class="cv" id="s-pressure">--</div></div>
+      <div class="chip"><div class="cl">Watchers</div><div class="cv" id="s-watchers">--</div></div>
+      <div class="chip"><div class="cl">Streak</div><div class="cv" id="s-streak">--</div></div>
+      <div class="chip"><div class="cl">Platform</div><div class="cv" id="s-platform">--</div></div>
+    </div>
+    <div id="resonance">—</div>
+    <div id="freq-tag"></div>
+  </aside>
+
+  <!-- Center: Canvas Stage -->
+  <main id="stage">
+    <canvas id="c"></canvas>
+    <div id="stage-overlay">
+      <div id="countdown"></div>
+      <div id="stage-msg">AWAITING ORACLE</div>
+      <div id="claim-form">
+        <input id="cname" type="text" placeholder="your name or address" maxlength="48" autocomplete="off" spellcheck="false">
+        <button id="claim-btn">CLAIM</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Right: Entity Info -->
+  <aside id="entity-panel">
+    <div id="no-spawn">
+      <div class="p-title">Entity</div>
+      <p class="ns">No entity is present.<br>The oracle cycles every 48 seconds. Each emergence is unique and unrepeatable.</p>
+    </div>
+    <div id="e-info" style="display:none;flex-direction:column;gap:0.75rem">
+      <div class="p-title">Entity</div>
+      <div>
+        <div id="e-name">—</div>
+        <div id="e-id">—</div>
+      </div>
+      <div><span class="r-badge" id="e-rarity">—</span></div>
+      <div class="tgrid">
+        <div class="tcell"><div class="tl">Origin</div><div class="tv" id="t-origin">—</div></div>
+        <div class="tcell"><div class="tl">Shell</div><div class="tv" id="t-shell">—</div></div>
+        <div class="tcell"><div class="tl">Core</div><div class="tv" id="t-core">—</div></div>
+        <div class="tcell"><div class="tl">Motion</div><div class="tv" id="t-motion">—</div></div>
+        <div class="tcell"><div class="tl">Eyes</div><div class="tv" id="t-eyes">—</div></div>
+        <div class="tcell"><div class="tl">Mark</div><div class="tv" id="t-mark">—</div></div>
+        <div class="tcell"><div class="tl">Temperament</div><div class="tv" id="t-temp">—</div></div>
+        <div class="tcell"><div class="tl">Anomaly</div><div class="tv" id="t-anom">—</div></div>
+      </div>
+      <div class="p-title" style="margin-top:0.1rem">Sonic Fingerprint</div>
+      <div>
+        <div id="s-hz">—</div>
+        <div id="s-ftag" style="margin-top:0.2rem">—</div>
+        <div id="s-detail" style="margin-top:0.5rem">—</div>
+      </div>
+      <div class="sv-row">
+        <span class="svl">Share Value</span>
+        <span class="svv" id="e-sv">—</span>
+      </div>
+      <div id="e-born">—</div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ── CLAIM SUCCESS OVERLAY ─────────────────────────────────────────── -->
+<div id="claimed-overlay">
+  <h2>CLAIMED</h2>
+  <div id="claimed-summary"></div>
+  <button id="dismiss">DISMISS</button>
+</div>
+
+<script>
+'use strict';
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const POLL_MS  = 3800;
+const API_STATE = '/api/state';
+const API_CLAIM = '/api/claim';
+
+// ── ORIGIN PALETTES ──────────────────────────────────────────────────────────
+const PAL = {
+  Ash:    { p:'#9CA3AF', s:'#6B7280', g:'#D1D5DB', bg:'#16181e' },
+  Tide:   { p:'#22D3EE', s:'#0891B2', g:'#67E8F9', bg:'#001e24' },
+  Bloom:  { p:'#F472B6', s:'#22C55E', g:'#F9A8D4', bg:'#1e0e18' },
+  Static: { p:'#818CF8', s:'#6366F1', g:'#C7D2FE', bg:'#0e0e1e' },
+  Dusk:   { p:'#FB923C', s:'#EF4444', g:'#FED7AA', bg:'#1c0e06' },
+  Void:   { p:'#A855F7', s:'#4C1D95', g:'#E9D5FF', bg:'#12001e' },
+  Aurora: { p:'#34D399', s:'#3B82F6', g:'#6EE7B7', bg:'#061410' },
+  Iron:   { p:'#94A3B8', s:'#475569', g:'#CBD5E1', bg:'#0e1014' },
+  Glass:  { p:'#F1F5F9', s:'#94A3B8', g:'#FFFFFF', bg:'#0c0e16' },
+  Storm:  { p:'#FCD34D', s:'#F59E0B', g:'#FEF9C3', bg:'#16120a' },
+};
+
+const RARITY_COLOR = {
+  Common:'#9CA3AF', Uncommon:'#34D399', Rare:'#60A5FA',
+  Epic:'#C084FC', Legendary:'#FBBF24', Mythic:'#F87171'
+};
+
+const CORE_COLOR = {
+  Ember:'#FF6B35', Frost:'#67E8F9', Pulse:'#F472B6',
+  Echo:'#A5B4FC', Prism:'#FFFFFF', Rot:'#84CC16',
+  Nova:'#FCD34D', Silk:'#FEA5D4', Singularity:'#1a0030', Thorn:'#EF4444'
+};
+
+// ── ENTRY STAR FIELD ─────────────────────────────────────────────────────────
+(function(){
+  const ec = document.getElementById('entry-stars');
+  if (!ec) return;
+  const ectx = ec.getContext('2d');
+  const stars = [];
+  function resizeStars() {
+    ec.width  = window.innerWidth;
+    ec.height = window.innerHeight;
+  }
+  resizeStars();
+  window.addEventListener('resize', resizeStars);
+  for (let i = 0; i < 180; i++) {
+    stars.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.2, s: 0.03 + Math.random() * 0.4, ph: Math.random() * Math.PI * 2 });
+  }
+  let t = 0;
+  function drawStars() {
+    ectx.clearRect(0, 0, ec.width, ec.height);
+    stars.forEach(s => {
+      const alpha = 0.25 + 0.25 * Math.sin(t * s.s + s.ph);
+      ectx.beginPath();
+      ectx.arc(s.x * ec.width, s.y * ec.height, s.r, 0, Math.PI * 2);
+      ectx.fillStyle = `rgba(109,143,255,${alpha})`;
+      ectx.fill();
+    });
+    t += 0.016;
+    requestAnimationFrame(drawStars);
+  }
+  drawStars();
+})();
+
+// ── SONIC ENGINE ─────────────────────────────────────────────────────────────
+class SonicEngine {
+  constructor() {
+    this.actx       = null;
+    this.masterGain = null;
+    this.dryBus     = null;
+    this.convolver  = null;
+    this.wetBus     = null;
+    this.nodes      = [];
+    this.playing    = false;
+    this._endTimer  = null;
+  }
+
+  async init() {
+    if (this.actx) {
+      if (this.actx.state === 'suspended') await this.actx.resume();
+      return;
+    }
+    this.actx       = new (window.AudioContext || window.webkitAudioContext)();
+    this.masterGain = this.actx.createGain();
+    this.masterGain.gain.value = 0;
+    this.masterGain.connect(this.actx.destination);
+
+    // Dry bus
+    this.dryBus = this.actx.createGain();
+    this.dryBus.gain.value = 0.62;
+    this.dryBus.connect(this.masterGain);
+
+    // Wet / reverb bus
+    this.convolver = this._buildReverb(5.5, 0.72);
+    this.wetBus    = this.actx.createGain();
+    this.wetBus.gain.value = 0.38;
+    this.convolver.connect(this.wetBus);
+    this.wetBus.connect(this.masterGain);
+  }
+
+  _buildReverb(dur, decay) {
+    const sr  = this.actx.sampleRate;
+    const len = Math.floor(sr * dur);
+    const buf = this.actx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+      }
+    }
+    const node = this.actx.createConvolver();
+    node.buffer = buf;
+    return node;
+  }
+
+  _semiratio(s) { return Math.pow(2, s / 12); }
+
+  _scaleNotes(mode, rootHz, count) {
+    const SCALES = {
+      dorian:            [0,2,3,5,7,9,10,12,14,15],
+      phrygian:          [0,1,3,5,7,8,10,12,13,15],
+      aeolian:           [0,2,3,5,7,8,10,12,14,15],
+      lydian:            [0,2,4,6,7,9,11,12,14,16],
+      phrygian_dominant: [0,1,4,5,7,8,10,12,13],
+      pentatonic_minor:  [0,3,5,7,10,12,15,17],
+      whole_tone:        [0,2,4,6,8,10,12,14],
+      locrian:           [0,1,3,5,6,8,10,12,13],
+    };
+    const iv = SCALES[mode] || SCALES.dorian;
+    const notes = [];
+    for (let i = 0; i < count; i++) {
+      notes.push(rootHz * this._semiratio(iv[i % iv.length]));
+    }
+    return notes;
+  }
+
+  stop() {
+    if (this._endTimer) { clearTimeout(this._endTimer); this._endTimer = null; }
+    this.nodes.forEach(n => {
+      try { n.stop && n.stop(0); } catch(_e) {}
+      try { n.disconnect(); } catch(_e) {}
+    });
+    this.nodes = [];
+    if (this.masterGain && this.actx) {
+      this.masterGain.gain.cancelScheduledValues(this.actx.currentTime);
+      this.masterGain.gain.setTargetAtTime(0, this.actx.currentTime, 0.4);
+    }
+    this.playing = false;
+  }
+
+  play(sf) {
+    if (!this.actx || this.playing) return;
+    this.playing = true;
+    const ctx = this.actx;
+    const now = ctx.currentTime;
+
+    const fund   = sf.fundamentalHz  || 432;
+    const ratios = sf.harmonicRatios || [1, 2, 3];
+    const tempo  = sf.tempo          || 52;
+    const atkSec = (sf.attackMs      || 800)  / 1000;
+    const decSec = (sf.decayMs       || 4000) / 1000;
+    const bHz    = sf.binauralBeatHz || 5.5;
+    const mode   = sf.scaleMode      || 'dorian';
+    const parts  = sf.partialCount   || 3;
+
+    const totalDur = atkSec + decSec + 3.0;
+    const beatSec  = 60.0 / tempo;
+    const push = n => this.nodes.push(n);
+
+    // ── Master envelope ──────────────────────────────────────────
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(0, now);
+    this.masterGain.gain.linearRampToValueAtTime(0.72, now + atkSec);
+    this.masterGain.gain.setValueAtTime(0.72, now + atkSec + 0.8);
+    this.masterGain.gain.exponentialRampToValueAtTime(0.001, now + totalDur);
+
+    // ── Binaural drone (left/right ears) ─────────────────────────
+    const panNode = ctx.createStereoPanner ? ctx.createStereoPanner : null;
+    for (let ch = 0; ch < 2; ch++) {
+      const freq = ch === 0 ? fund : fund + bHz;
+      const osc  = ctx.createOscillator();
+      const gn   = ctx.createGain();
+      osc.type            = 'sine';
+      osc.frequency.value = freq;
+      gn.gain.value       = 0.28;
+      osc.connect(gn);
+      if (ctx.createStereoPanner) {
+        const pan = ctx.createStereoPanner();
+        pan.pan.value = ch === 0 ? -1 : 1;
+        gn.connect(pan);
+        pan.connect(this.dryBus);
+        push(pan);
+      } else {
+        gn.connect(this.dryBus);
+      }
+      osc.start(now); osc.stop(now + totalDur);
+      push(osc); push(gn);
+    }
+
+    // ── Sub-bass grounding tone ───────────────────────────────────
+    {
+      const sub = ctx.createOscillator();
+      const gn  = ctx.createGain();
+      sub.type            = 'sine';
+      sub.frequency.value = fund / 2;
+      gn.gain.value       = 0.16;
+      sub.connect(gn); gn.connect(this.dryBus);
+      sub.start(now); sub.stop(now + totalDur);
+      push(sub); push(gn);
+    }
+
+    // ── Harmonic series overtones ─────────────────────────────────
+    ratios.forEach((ratio, i) => {
+      const freq = fund * ratio;
+      if (freq > 15000) return;
+      const osc = ctx.createOscillator();
+      const gn  = ctx.createGain();
+      osc.type            = i < 2 ? 'sine' : 'triangle';
+      osc.frequency.value = freq;
+      gn.gain.value       = 0.16 / (i + 1);
+      osc.connect(gn);
+      gn.connect(this.dryBus);
+      gn.connect(this.convolver);
+      osc.start(now); osc.stop(now + totalDur);
+      push(osc); push(gn);
+    });
+
+    // ── Melodic scale phrases ─────────────────────────────────────
+    const notes    = this._scaleNotes(mode, fund, 10 + parts * 2);
+    const noteCount = Math.min(18, 5 + Math.floor(parts * 2.5));
+    for (let i = 0; i < noteCount; i++) {
+      const delayOff = beatSec * i * 0.65;
+      if (delayOff > totalDur - 0.6) break;
+      const nFreq = notes[i % notes.length];
+      const osc   = ctx.createOscillator();
+      const gn    = ctx.createGain();
+      osc.type            = 'triangle';
+      osc.frequency.value = nFreq;
+      gn.gain.setValueAtTime(0, now + delayOff);
+      gn.gain.linearRampToValueAtTime(0.11, now + delayOff + 0.06);
+      gn.gain.exponentialRampToValueAtTime(0.0001, now + delayOff + 0.65);
+      osc.connect(gn);
+      gn.connect(this.dryBus);
+      gn.connect(this.convolver);
+      osc.start(now + delayOff);
+      osc.stop(now + delayOff + 0.75);
+      push(osc); push(gn);
+    }
+
+    // ── Slow tremolo LFO (on a dedicated tremolo gain) ────────────
+    {
+      const tremoloGain = ctx.createGain();
+      tremoloGain.gain.value = 0;
+      const lfo = ctx.createOscillator();
+      const lfoAmt = ctx.createGain();
+      lfo.frequency.value = 0.25 + (bHz / 25);
+      lfoAmt.gain.value   = 0.035;
+      lfo.connect(lfoAmt);
+      // LFO -> dryBus.gain via tremoloGain is tricky; easier to
+      // modulate a silent pass-through and sum into masterGain.
+      // Instead we modulate the masterGain directly through a const offset.
+      lfo.connect(lfoAmt);
+      lfoAmt.connect(this.masterGain.gain);
+      lfo.start(now); lfo.stop(now + totalDur);
+      push(lfo); push(lfoAmt); push(tremoloGain);
+    }
+
+    this._endTimer = setTimeout(() => this.stop(), (totalDur + 0.8) * 1000);
+  }
+}
+
+// ── CANVAS RENDERER ──────────────────────────────────────────────────────────
+class SpawnRenderer {
+  constructor(canvas) {
+    this.cv  = canvas;
+    this.cx  = canvas.getContext('2d');
+    this.W   = 0; this.H = 0;
+    this.t   = 0;
+    this.raf = null;
+    this.ent = null;
+    this.vit = null;
+    this.pts = [];         // particles
+    this._resize();
+    const ro = new ResizeObserver(() => this._resize());
+    ro.observe(canvas.parentElement);
+  }
+
+  _resize() {
+    const wrapper = this.cv.parentElement;
+    const sz = Math.min(wrapper.clientWidth || 400, wrapper.clientHeight || 400, 580);
+    this.cv.width  = Math.max(sz, 200);
+    this.cv.height = Math.max(sz, 200);
+    this.W = this.cv.width;
+    this.H = this.cv.height;
+  }
+
+  setEntity(ent, vit) {
+    this.ent = ent;
+    this.vit = vit || {};
+    this.pts = ent ? this._makeParticles(ent, vit) : [];
+  }
+
+  _makeParticles(ent, vit) {
+    const CPU   = vit?.cpuEstimate || 30;
+    const base  = 22 + Math.floor((ent.watchers / 999) * 55) + Math.floor(CPU / 3.5);
+    const bonus = { Common:0, Uncommon:6, Rare:12, Epic:22, Legendary:40, Mythic:70 };
+    const count = base + (bonus[ent.rarity] || 0);
+    const pal   = PAL[ent.origin] || PAL.Ash;
+    const pts   = [];
+    for (let i = 0; i < count; i++) {
+      const angle   = (Math.PI * 2 * i / count) + Math.random() * 0.25;
+      const baseR   = 75 + Math.random() * 90;
+      const spd     = (0.004 + (ent.pressure / 100) * 0.014 + Math.random() * 0.007)
+                      * (Math.random() > 0.5 ? 1 : -1);
+      pts.push({
+        angle, baseR,
+        spd, size: 0.7 + Math.random() * 2.4,
+        alpha: 0.28 + Math.random() * 0.65,
+        col: Math.random() > 0.55 ? pal.p : pal.s,
+        ph: Math.random() * Math.PI * 2,
+        phSpd: 0.018 + Math.random() * 0.038,
+      });
+    }
+    return pts;
+  }
+
+  start() {
+    if (this.raf) return;
+    const tick = () => {
+      this._draw();
+      this.t   += 0.016;
+      this.raf  = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  stop() { if (this.raf) { cancelAnimationFrame(this.raf); this.raf = null; } }
+
+  // ── Main draw ────────────────────────────────────────────────────
+  _draw() {
+    const { cx, W, H, t, ent } = this;
+    cx.clearRect(0, 0, W, H);
+    const mx = W / 2, my = H / 2;
+
+    if (!ent) { this._drawIdle(mx, my); return; }
+
+    const pal  = PAL[ent.origin]     || PAL.Ash;
+    const cc   = CORE_COLOR[ent.core]|| pal.p;
+    const rCol = RARITY_COLOR[ent.rarity] || '#ffffff';
+
+    // Background radial
+    const bg = cx.createRadialGradient(mx, my, 0, mx, my, W * 0.52);
+    bg.addColorStop(0, pal.bg + 'ff');
+    bg.addColorStop(1, '#020308ff');
+    cx.fillStyle = bg;
+    cx.fillRect(0, 0, W, H);
+
+    // Rarity aura
+    const aura = cx.createRadialGradient(mx, my, 50, mx, my, 200);
+    aura.addColorStop(0, rCol + '00');
+    aura.addColorStop(0.45, rCol + '14');
+    aura.addColorStop(1,  rCol + '00');
+    cx.fillStyle = aura;
+    cx.fillRect(0, 0, W, H);
+
+    // Particles
+    this._drawParticles(mx, my);
+
+    // Entity body
+    this._drawBody(mx, my, ent, pal, cc, rCol, t);
+
+    // Eyes
+    this._drawEyes(mx, my, ent, pal, t);
+
+    // Mark
+    this._drawMark(mx, my, ent, pal, t);
+
+    // Anomaly
+    this._drawAnomaly(mx, my, ent, pal, t);
+
+    // ID watermark
+    cx.fillStyle = 'rgba(255,255,255,0.035)';
+    cx.font = '8px "Space Mono", monospace';
+    cx.textAlign = 'center';
+    cx.fillText(ent.id, mx, H - 10);
+  }
+
+  _drawIdle(mx, my) {
+    const { cx, W, H, t } = this;
+    cx.fillStyle = '#020308';
+    cx.fillRect(0, 0, W, H);
+    // Breathing rings
+    for (let r = 0; r < 4; r++) {
+      const ph = (t * 0.35 + r * 0.55) % 1;
+      const rd = ph * 130;
+      const al = (1 - ph) * 0.12;
+      cx.beginPath();
+      cx.arc(mx, my, rd, 0, Math.PI * 2);
+      cx.strokeStyle = `rgba(109,143,255,${al})`;
+      cx.lineWidth = 1;
+      cx.stroke();
+    }
+    // Dormant core
+    const g = cx.createRadialGradient(mx, my, 0, mx, my, 28);
+    g.addColorStop(0, 'rgba(109,143,255,0.2)');
+    g.addColorStop(1, 'rgba(109,143,255,0)');
+    cx.fillStyle = g;
+    cx.beginPath(); cx.arc(mx, my, 28, 0, Math.PI * 2); cx.fill();
+    cx.beginPath(); cx.arc(mx, my, 7 + Math.sin(t * 2) * 1.5, 0, Math.PI * 2);
+    cx.fillStyle = 'rgba(109,143,255,0.35)'; cx.fill();
+  }
+
+  _drawParticles(mx, my) {
+    const { cx } = this;
+    this.pts.forEach(p => {
+      p.angle += p.spd;
+      p.ph    += p.phSpd;
+      const r   = p.baseR + Math.sin(p.ph) * 13;
+      const px  = mx + Math.cos(p.angle) * r;
+      const py  = my + Math.sin(p.angle) * r;
+      const al  = p.alpha * (0.65 + 0.35 * Math.sin(p.ph));
+      const alH = Math.floor(al * 255).toString(16).padStart(2, '0');
+      cx.beginPath(); cx.arc(px, py, p.size, 0, Math.PI * 2);
+      cx.fillStyle = p.col + alH; cx.fill();
+      // Micro trail
+      const tx = px - Math.cos(p.angle) * 5;
+      const ty = py - Math.sin(p.angle) * 5;
+      cx.beginPath(); cx.arc(tx, ty, p.size * 0.4, 0, Math.PI * 2);
+      cx.fillStyle = p.col + '1e'; cx.fill();
+    });
+  }
+
+  _drawBody(mx, my, ent, pal, cc, rCol, t) {
+    const { cx } = this;
+    const motion = ent.motion.toLowerCase();
+    const sz     = 50 + (ent.pressure / 100) * 22;
+    const pulse  = 1 + 0.038 * Math.sin(t * 2.4);
+
+    let ox = 0, oy = 0;
+    if (motion === 'hovering')   { oy = Math.sin(t * 1.15) * 7; }
+    if (motion === 'spiraling')  { ox = Math.cos(t * 0.75) * 11; oy = Math.sin(t * 0.75) * 11; }
+    if (motion === 'orbiting')   { ox = Math.cos(t * 0.5)  * 9;  oy = Math.sin(t * 0.5)  * 5; }
+    if (motion === 'threading')  { ox = Math.sin(t * 1.9) * 5; }
+    if (motion === 'burrowing')  { oy = -Math.abs(Math.sin(t * 1.4)) * 9; }
+    if (motion === 'leaping')    { oy = -Math.abs(Math.sin(t * 1.8)) * 14; }
+    if (motion === 'cracking')   { if (Math.random() < 0.04) { ox = (Math.random()-0.5)*2; } }
+    if (motion === 'phasing')    { cx.globalAlpha = 0.68 + 0.32 * Math.sin(t * 2.8); }
+
+    cx.save();
+    cx.translate(mx + ox, my + oy);
+    cx.scale(pulse, pulse);
+    this._drawShell(ent.shell.toLowerCase(), pal, cc, rCol, sz, t, ent.pressure);
+    cx.restore();
+    cx.globalAlpha = 1;
+  }
+
+  _drawShell(shell, pal, cc, rCol, sz, t, pressure) {
+    const { cx } = this;
+
+    const shells = {
+      idol: () => {
+        const g = cx.createRadialGradient(0, -sz*0.1, sz*0.08, 0, 0, sz);
+        g.addColorStop(0, cc + 'cc'); g.addColorStop(0.42, pal.p + '88'); g.addColorStop(1, pal.s + '28');
+        cx.beginPath(); cx.ellipse(0, 0, sz * 0.58, sz, 0, 0, Math.PI * 2);
+        cx.fillStyle = g; cx.fill();
+        cx.strokeStyle = pal.p + '80'; cx.lineWidth = 1.5; cx.stroke();
+      },
+      serpent: () => {
+        cx.beginPath();
+        for (let i = -sz; i <= sz; i += 2) {
+          const y = Math.sin((i / sz) * Math.PI * 2 + t * 2) * sz * 0.42;
+          i === -sz ? cx.moveTo(i, y) : cx.lineTo(i, y);
+        }
+        cx.strokeStyle = pal.p + 'cc'; cx.lineWidth = 9; cx.lineCap = 'round'; cx.stroke();
+        cx.strokeStyle = cc + '99'; cx.lineWidth = 3; cx.stroke();
+      },
+      lattice: () => {
+        const step = sz / 3;
+        cx.strokeStyle = pal.p + '55'; cx.lineWidth = 1;
+        for (let v = -sz; v <= sz; v += step) {
+          cx.beginPath(); cx.moveTo(-sz, v); cx.lineTo(sz, v); cx.stroke();
+          cx.beginPath(); cx.moveTo(v, -sz); cx.lineTo(v, sz); cx.stroke();
+        }
+        for (let row = -sz; row <= sz; row += step) {
+          for (let col = -sz; col <= sz; col += step) {
+            cx.beginPath(); cx.arc(col, row, 2.5, 0, Math.PI * 2);
+            cx.fillStyle = cc + 'cc'; cx.fill();
+          }
+        }
+        cx.beginPath(); cx.arc(0, 0, sz, 0, Math.PI * 2);
+        cx.strokeStyle = pal.p + '3a'; cx.lineWidth = 1; cx.stroke();
+      },
+      bloomform: () => {
+        for (let i = 0; i < 6; i++) {
+          const a = (Math.PI * 2 * i / 6) + t * 0.28;
+          const px2 = Math.cos(a) * sz * 0.38, py2 = Math.sin(a) * sz * 0.38;
+          cx.beginPath(); cx.ellipse(px2, py2, sz * 0.34, sz * 0.17, a, 0, Math.PI * 2);
+          const g = cx.createRadialGradient(px2, py2, 0, 0, 0, sz);
+          g.addColorStop(0, cc + 'cc'); g.addColorStop(1, pal.s + '18');
+          cx.fillStyle = g; cx.fill();
+        }
+        cx.beginPath(); cx.arc(0, 0, sz * 0.24, 0, Math.PI * 2);
+        cx.fillStyle = cc + 'ee'; cx.fill();
+      },
+      monolith: () => {
+        const w = sz * 0.52, h = sz * 1.18;
+        const g = cx.createLinearGradient(-w, -h/2, w, h/2);
+        g.addColorStop(0, pal.s + '88'); g.addColorStop(0.5, cc + 'cc'); g.addColorStop(1, pal.s + '44');
+        cx.fillStyle = g; cx.fillRect(-w/2, -h/2, w, h);
+        cx.strokeStyle = pal.p + '66'; cx.lineWidth = 1.5; cx.strokeRect(-w/2, -h/2, w, h);
+        const scanY = ((t * 38) % h) - h / 2;
+        cx.beginPath(); cx.moveTo(-w/2, scanY); cx.lineTo(w/2, scanY);
+        cx.strokeStyle = cc + 'aa'; cx.lineWidth = 1; cx.stroke();
+      },
+      swarm: () => {
+        for (let i = 0; i < 22; i++) {
+          const a = (i / 22) * Math.PI * 2 + Math.sin(t * 0.55 + i) * 0.9;
+          const r = 18 + (i % 5) * 14 + Math.sin(t * 1.4 + i * 0.7) * 9;
+          cx.beginPath(); cx.arc(Math.cos(a)*r, Math.sin(a)*r, 2.5 + (i%3)*1.5, 0, Math.PI*2);
+          cx.fillStyle = (i%2===0 ? pal.p : pal.s) + 'bb'; cx.fill();
+        }
+        cx.beginPath(); cx.arc(0, 0, 11, 0, Math.PI * 2);
+        cx.fillStyle = cc + 'ee'; cx.fill();
+      },
+      spiral: () => {
+        cx.beginPath();
+        for (let i = 0; i < 320; i++) {
+          const angle = 0.1 * i + t;
+          const r     = 0.24 * i;
+          i === 0 ? cx.moveTo(Math.cos(angle)*r, Math.sin(angle)*r)
+                  : cx.lineTo(Math.cos(angle)*r, Math.sin(angle)*r);
+          if (r > sz) break;
+        }
+        cx.strokeStyle = pal.p + '88'; cx.lineWidth = 1.5; cx.stroke();
+        cx.beginPath(); cx.arc(0, 0, 9, 0, Math.PI * 2);
+        cx.fillStyle = cc + 'ee'; cx.fill();
+      },
+      cocoon: () => {
+        const g = cx.createRadialGradient(0, 0, sz*0.08, 0, 0, sz);
+        g.addColorStop(0, cc + 'ee'); g.addColorStop(0.5, pal.p + '55'); g.addColorStop(1, pal.s + '1a');
+        cx.beginPath(); cx.ellipse(0, 0, sz * 0.66, sz, 0, 0, Math.PI * 2);
+        cx.fillStyle = g; cx.fill();
+        for (let b = 0; b < 5; b++) {
+          const by = -sz + (b / 4) * sz * 2;
+          const hw = Math.sqrt(Math.max(0, (sz*0.66)**2 * (1-(by/sz)**2)));
+          cx.beginPath(); cx.ellipse(0, by, hw * 0.75, sz * 0.075, 0, 0, Math.PI * 2);
+          cx.strokeStyle = pal.p + '2a'; cx.lineWidth = 1; cx.stroke();
+        }
+      },
+      prism: () => {
+        const sides = pressure > 58 ? 4 : 3;
+        cx.beginPath();
+        for (let i = 0; i < sides; i++) {
+          const a = (Math.PI * 2 * i / sides) - Math.PI/2 + t * 0.28;
+          i === 0 ? cx.moveTo(Math.cos(a)*sz, Math.sin(a)*sz)
+                  : cx.lineTo(Math.cos(a)*sz, Math.sin(a)*sz);
+        }
+        cx.closePath();
+        const g = cx.createRadialGradient(0, 0, 0, 0, 0, sz);
+        g.addColorStop(0, cc + 'cc'); g.addColorStop(1, pal.s + '2a');
+        cx.fillStyle = g; cx.fill();
+        cx.strokeStyle = pal.p + '88'; cx.lineWidth = 1.5; cx.stroke();
+        cx.beginPath();
+        for (let i = 0; i < sides; i++) {
+          const a = (Math.PI * 2 * i / sides) - Math.PI/2 - t * 0.28;
+          i === 0 ? cx.moveTo(Math.cos(a)*sz*0.48, Math.sin(a)*sz*0.48)
+                  : cx.lineTo(Math.cos(a)*sz*0.48, Math.sin(a)*sz*0.48);
+        }
+        cx.closePath(); cx.strokeStyle = cc + '55'; cx.lineWidth = 1; cx.stroke();
+      },
+      beast: () => {
+        const spikes = 8;
+        cx.beginPath();
+        for (let i = 0; i < spikes * 2; i++) {
+          const a = (Math.PI * 2 * i / (spikes * 2)) + t * 0.2;
+          const r = i % 2 === 0 ? sz : sz * 0.44;
+          i === 0 ? cx.moveTo(Math.cos(a)*r, Math.sin(a)*r)
+                  : cx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
+        }
+        cx.closePath();
+        const g = cx.createRadialGradient(0, 0, 0, 0, 0, sz);
+        g.addColorStop(0, cc + 'dd'); g.addColorStop(1, pal.p + '44');
+        cx.fillStyle = g; cx.fill();
+        cx.strokeStyle = rCol + '80'; cx.lineWidth = 1; cx.stroke();
+      },
+    };
+
+    (shells[shell] || shells.idol)();
+
+    // Inner core glow (all shells)
+    const ig = cx.createRadialGradient(0, 0, 0, 0, 0, 18);
+    ig.addColorStop(0, cc + 'ff'); ig.addColorStop(1, cc + '00');
+    cx.beginPath(); cx.arc(0, 0, 18, 0, Math.PI * 2);
+    cx.fillStyle = ig; cx.fill();
+  }
+
+  _drawEyes(mx, my, ent, pal, t) {
+    const { cx } = this;
+    const EYE_POS = {
+      Single:  [[0,-12]],
+      Dual:    [[-13,-9],[13,-9]],
+      Cluster: [[-11,-13],[11,-13],[0,-6],[-17,-2],[17,-2]],
+      Blind:   [],
+      Halo:    [[0,-17],[11,-11],[15,0],[11,11],[0,17],[-11,11],[-15,0],[-11,-11]],
+      Void:    [[0,0]],
+      Crown:   [[-22,-20],[-11,-24],[0,-26],[11,-24],[22,-20]],
+      Oracle:  [[0,-16]],
+      Mirrored:[[-13,-9],[13,-9]],
+      Closed:  [],
+    };
+    const positions = EYE_POS[ent.eyes] || EYE_POS.Single;
+    positions.forEach(([dx, dy]) => {
+      cx.save();
+      cx.translate(mx + dx, my + dy);
+      const pulse = 0.82 + 0.18 * Math.sin(t * 2.8 + dx);
+      cx.beginPath(); cx.arc(0, 0, 5 * pulse, 0, Math.PI * 2);
+      cx.fillStyle = ent.eyes === 'Void' ? '#000' : '#fff'; cx.fill();
+      cx.beginPath(); cx.arc(0, 0, 2.5 * pulse, 0, Math.PI * 2);
+      cx.fillStyle = pal.p; cx.fill();
+      const eg = cx.createRadialGradient(0, 0, 0, 0, 0, 11);
+      eg.addColorStop(0, pal.p + 'aa'); eg.addColorStop(1, pal.p + '00');
+      cx.fillStyle = eg; cx.beginPath(); cx.arc(0, 0, 11, 0, Math.PI * 2); cx.fill();
+      cx.restore();
+    });
+  }
+
+  _drawMark(mx, my, ent, pal, t) {
+    const { cx } = this;
+    cx.save();
+    cx.translate(mx, my);
+    cx.globalAlpha = 0.32 + 0.1 * Math.sin(t * 0.8);
+    cx.strokeStyle = pal.p + 'aa'; cx.lineWidth = 0.9;
+
+    switch (ent.mark) {
+      case 'Runic':
+        [[-14,-24,14,-24],[-14,-9,14,-9],[0,-24,0,-9]].forEach(([x1,y1,x2,y2]) => {
+          cx.beginPath(); cx.moveTo(x1+5, y1+5); cx.lineTo(x2+5, y2+5); cx.stroke();
+        });
+        break;
+      case 'Circuit':
+        cx.beginPath();
+        cx.moveTo(-28,28); cx.lineTo(-14,28); cx.lineTo(-14,18); cx.lineTo(14,18); cx.lineTo(14,28); cx.lineTo(28,28);
+        cx.stroke();
+        cx.beginPath(); cx.arc(0,18,3,0,Math.PI*2); cx.fillStyle=pal.p+'cc'; cx.fill();
+        break;
+      case 'Celestial':
+        for (let i = 0; i < 5; i++) {
+          const a = (Math.PI * 2 * i / 5) + t * 0.1;
+          cx.beginPath(); cx.moveTo(0,0); cx.lineTo(Math.cos(a)*32,Math.sin(a)*32); cx.stroke();
+          cx.beginPath(); cx.arc(Math.cos(a)*32,Math.sin(a)*32,2.2,0,Math.PI*2);
+          cx.fillStyle=pal.p+'99'; cx.fill();
+        }
+        break;
+      case 'Fungal':
+        for (let r=14; r<=40; r+=9) {
+          cx.beginPath(); cx.arc(0,0,r,0,Math.PI*0.65); cx.stroke();
+          cx.beginPath(); cx.arc(0,0,r,Math.PI,Math.PI*1.5); cx.stroke();
+        }
+        break;
+      case 'Tidal':
+        cx.beginPath();
+        for (let x=-32; x<=32; x+=2) {
+          const y = 20 + Math.sin((x/20)*Math.PI + t) * 9;
+          x===-32 ? cx.moveTo(x,y) : cx.lineTo(x,y);
+        }
+        cx.stroke();
+        break;
+      case 'Solar':
+        for (let i=0; i<8; i++) {
+          const a=(Math.PI*2*i/8)+t*0.15;
+          cx.beginPath(); cx.moveTo(Math.cos(a)*18,Math.sin(a)*18); cx.lineTo(Math.cos(a)*30,Math.sin(a)*30); cx.stroke();
+        }
+        cx.beginPath(); cx.arc(0,0,15,0,Math.PI*2); cx.stroke();
+        break;
+      case 'Lunar':
+        cx.beginPath(); cx.arc(5,0,20,Math.PI*0.3,Math.PI*1.7); cx.stroke();
+        cx.beginPath(); cx.arc(12,0,20,Math.PI*1.1,Math.PI*2.1); cx.strokeStyle=pal.p+'33'; cx.stroke();
+        break;
+      case 'Ancient':
+        cx.beginPath(); cx.arc(0,0,28,0,Math.PI*2); cx.stroke();
+        cx.beginPath(); cx.arc(0,0,18,0,Math.PI*2); cx.globalAlpha=0.15; cx.stroke();
+        break;
+      default:
+        for (let r=14; r<=34; r+=10) {
+          cx.beginPath(); cx.arc(0,0,r,0,Math.PI*2); cx.globalAlpha=0.12; cx.stroke();
+        }
+    }
+    cx.restore(); cx.globalAlpha = 1;
+  }
+
+  _drawAnomaly(mx, my, ent, pal, t) {
+    if (!ent.anomaly || ent.anomaly === 'None') return;
+    const { cx } = this;
+    cx.save(); cx.translate(mx, my);
+
+    switch (ent.anomaly) {
+      case 'Mirrored':
+        cx.save(); cx.scale(-1,1); cx.globalAlpha=0.22;
+        this._drawShell(ent.shell.toLowerCase(), pal, '#fff', '#fff', 50+(ent.pressure/100)*22, t, ent.pressure);
+        cx.restore();
+        break;
+      case 'Inverted':
+        cx.globalCompositeOperation = 'difference';
+        cx.beginPath(); cx.arc(0,0,62,0,Math.PI*2);
+        cx.fillStyle='rgba(255,255,255,0.09)'; cx.fill();
+        cx.globalCompositeOperation = 'source-over';
+        break;
+      case 'Recursive':
+        for (let s=0.42; s>=0.14; s-=0.12) {
+          cx.save(); cx.scale(s,s); cx.rotate(t*(1-s));
+          cx.globalAlpha=s*0.45;
+          this._drawShell(ent.shell.toLowerCase(), pal, pal.p, pal.s, 50+(ent.pressure/100)*22, t, ent.pressure);
+          cx.restore();
+        }
+        break;
+      case 'Glitched':
+        if (Math.random()<0.055) {
+          cx.save(); cx.translate((Math.random()-0.5)*10,0); cx.globalAlpha=0.28;
+          cx.strokeStyle='#ff0044'; cx.lineWidth=2;
+          const sy=(Math.random()-0.5)*65;
+          cx.beginPath(); cx.moveTo(-55,sy); cx.lineTo(55,sy); cx.stroke();
+          cx.restore();
+        }
+        break;
+      case 'Singular': {
+        const h = cx.createRadialGradient(0,0,58,0,0,85);
+        h.addColorStop(0,'#FBBF2450'); h.addColorStop(1,'#FBBF2400');
+        cx.fillStyle=h; cx.beginPath(); cx.arc(0,0,85,0,Math.PI*2); cx.fill();
+        cx.save(); cx.rotate(t*0.65);
+        cx.beginPath(); cx.arc(0,0,73,0,Math.PI*1.55);
+        cx.strokeStyle='#FBBF24bb'; cx.lineWidth=2; cx.stroke();
+        cx.restore();
+        break;
+      }
+      case 'Dreaming':
+        for (let d=0; d<3; d++) {
+          const dx=Math.sin(t*0.5+d)*22, dy=-18+d*14;
+          const dg=cx.createRadialGradient(dx,dy,0,dx,dy,42);
+          dg.addColorStop(0,pal.p+'24'); dg.addColorStop(1,pal.p+'00');
+          cx.fillStyle=dg; cx.beginPath(); cx.arc(dx,dy,42,0,Math.PI*2); cx.fill();
+        }
+        break;
+      case 'Chronal':
+        for (let i=0;i<12;i++) {
+          const a=(Math.PI*2*i/12)+t;
+          cx.beginPath(); cx.arc(Math.cos(a)*68,Math.sin(a)*68,2,0,Math.PI*2);
+          cx.fillStyle=pal.p+(i<9?'aa':'2a'); cx.fill();
+        }
+        break;
+      case 'Shattered':
+        cx.globalAlpha=0.28;
+        for (let s=0;s<5;s++) {
+          const a=(s/5)*Math.PI*2+t*0.22;
+          cx.save(); cx.translate(Math.cos(a)*52,Math.sin(a)*52); cx.rotate(a+t);
+          cx.beginPath(); cx.moveTo(0,-9); cx.lineTo(6,9); cx.lineTo(-6,9); cx.closePath();
+          cx.fillStyle=pal.p+'88'; cx.fill(); cx.restore();
+        }
+        cx.globalAlpha=1;
+        break;
+      case 'Impossible':
+        // Simultaneously convex and concave
+        for (let layer=0;layer<3;layer++) {
+          const lr=60+layer*12;
+          cx.save(); cx.rotate(t*0.15*(layer%2===0?1:-1));
+          cx.beginPath();
+          for (let i=0;i<6;i++) {
+            const a=(Math.PI*2*i/6);
+            const r2=i%2===0?lr:lr*0.55;
+            i===0?cx.moveTo(Math.cos(a)*r2,Math.sin(a)*r2):cx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2);
+          }
+          cx.closePath(); cx.strokeStyle=pal.p+(layer===0?'55':'22'); cx.lineWidth=0.8; cx.stroke();
+          cx.restore();
+        }
+        break;
+    }
+    cx.restore();
+  }
+}
+
+// ── LIVE STATE CACHE (for fast timer ticks) ──────────────────────────────────
+let _liveState  = null;
+let _lastSlot   = null;
+let _lastSonSlot= null;
+
+// ── UTILITIES ────────────────────────────────────────────────────────────────
+function mmss(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+}
+function fmtUptime(s) {
+  if (s < 60)   return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m ${Math.floor(s%60)}s`;
+  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+}
+function el(id) { return document.getElementById(id); }
+
+// ── UI UPDATES ───────────────────────────────────────────────────────────────
+function applyVitals(vitals, signals) {
+  if (!vitals) return;
+  const cpu = vitals.cpuEstimate || 0;
+  const memPct = Math.min(100, (vitals.memMb / 256) * 100);
+  const thrPct = Math.min(100, (vitals.threadCount / 20) * 100);
+
+  el('v-cpu').textContent  = cpu + '%';
+  el('vb-cpu').style.width = cpu + '%';
+  el('vb-cpu').style.background = cpu>80?'#f87171':cpu>55?'#fbbf24':'#6d8fff';
+  el('v-mem').textContent  = vitals.memMb + ' MB';
+  el('vb-mem').style.width = memPct + '%';
+  el('v-thr').textContent  = vitals.threadCount;
+  el('vb-thr').style.width = thrPct + '%';
+  el('v-load').textContent = vitals.loadAvg1m;
+  el('v-up').textContent   = fmtUptime(vitals.uptimeSec);
+  el('v-req').textContent  = vitals.requestCount;
+  el('v-jit').textContent  = vitals.microJitter;
+  el('s-platform').textContent = vitals.platform || '--';
+
+  if (signals) {
+    el('s-pressure').textContent = signals.pressure;
+    el('s-watchers').textContent  = signals.watchers;
+    el('s-streak').textContent    = signals.streak;
+    el('resonance').textContent   = signals.resonance || '—';
+  }
+}
+
+function applyEntity(entity) {
+  const noEl  = el('no-spawn');
+  const infoEl= el('e-info');
+  const cfEl  = el('claim-form');
+
+  if (!entity) {
+    noEl.style.display   = 'flex';
+    infoEl.style.display = 'none';
+    cfEl.classList.remove('on');
+    el('freq-tag').textContent = '';
+    return;
+  }
+
+  noEl.style.display   = 'none';
+  infoEl.style.display = 'flex';
+  cfEl.classList.add('on');
+
+  el('e-name').textContent = entity.name;
+  el('e-id').textContent   = '#' + entity.id;
+
+  const rb = el('e-rarity');
+  rb.textContent = entity.rarity.toUpperCase();
+  rb.className   = 'r-badge rc-' + entity.rarity;
+
+  el('t-origin').textContent = entity.origin;
+  el('t-shell').textContent  = entity.shell;
+  el('t-core').textContent   = entity.core;
+  el('t-motion').textContent = entity.motion;
+  el('t-eyes').textContent   = entity.eyes;
+  el('t-mark').textContent   = entity.mark;
+  el('t-temp').textContent   = entity.temperament;
+  el('t-anom').textContent   = entity.anomaly;
+
+  const sf = entity.sonicFingerprint;
+  if (sf) {
+    el('s-hz').textContent   = sf.fundamentalHz.toFixed(2) + ' Hz';
+    el('s-ftag').textContent = sf.originFreqTag || '';
+    el('freq-tag').textContent = sf.originFreqTag || '';
+    el('s-detail').innerHTML = `
+      <strong>Mode</strong> ${sf.scaleMode} &nbsp;·&nbsp; <strong>Mood</strong> ${sf.moodTag}<br>
+      <strong>Tempo</strong> ${sf.tempo} BPM &nbsp;·&nbsp; <strong>Partials</strong> ${sf.partialCount}<br>
+      <strong>Attack</strong> ${sf.attackMs}ms &nbsp;·&nbsp; <strong>Decay</strong> ${sf.decayMs}ms<br>
+      <strong>Binaural θ-beat</strong> ${sf.binauralBeatHz} Hz<br>
+      <strong>Detune</strong> ${sf.detuneCents > 0 ? '+' : ''}${sf.detuneCents}¢
+    `;
+  }
+
+  el('e-sv').textContent   = entity.shareValue;
+  el('e-born').textContent = 'Born: ' + new Date(entity.bornAt).toLocaleString();
+}
+
+function applyTimer(state) {
+  if (!state) return;
+  const now  = Date.now();
+  const tval = el('t-val');
+  const cdEl = el('countdown');
+  const msgEl= el('stage-msg');
+  const bdg  = el('spawn-badge');
+
+  if (state.claimable && state.claimEndsAt) {
+    const rem = Math.max(0, state.claimEndsAt - now);
+    tval.textContent = (rem / 1000).toFixed(1) + 's';
+    bdg.classList.add('on');
+    cdEl.classList.remove('on');
+    msgEl.textContent = 'SPAWN ACTIVE · CLAIM NOW';
+  } else {
+    const rem = Math.max(0, state.nextSpawnAt - now);
+    tval.textContent = mmss(rem);
+    bdg.classList.remove('on');
+    if (rem > 0 && rem < 28000) {
+      cdEl.classList.add('on');
+      cdEl.textContent = Math.ceil(rem / 1000);
+    } else {
+      cdEl.classList.remove('on');
+    }
+    msgEl.textContent = rem < 4500 ? 'MATERIALIZING…' : 'AWAITING NEXT SPAWN';
+  }
+}
+
+// ── POLL ─────────────────────────────────────────────────────────────────────
+const sonic    = new SonicEngine();
+let renderer   = null;
+
+async function poll() {
+  try {
+    const res  = await fetch(API_STATE, { cache: 'no-store' });
+    const data = await res.json();
+
+    el('o-dot').className = 'o-dot live';
+    el('o-txt').textContent = 'ORACLE LIVE';
+
+    _liveState = data;
+    applyVitals(data.serverVitals, data.signals);
+    applyTimer(data);
+
+    const ent  = data.current;
+    const slot = ent?.slot ?? null;
+
+    if (slot !== _lastSlot) {
+      _lastSlot = slot;
+      renderer?.setEntity(ent, data.serverVitals);
+      applyEntity(ent);
+      // Trigger sound once per spawn slot
+      if (ent && slot !== _lastSonSlot && data.claimable) {
+        _lastSonSlot = slot;
+        sonic.stop();
+        sonic.play(ent.sonicFingerprint);
+      }
+    }
+  } catch (_e) {
+    el('o-dot').className = 'o-dot dead';
+    el('o-txt').textContent = 'ORACLE OFFLINE';
+  }
+}
+
+// ── CLAIM ─────────────────────────────────────────────────────────────────────
+async function doClaim() {
+  const collector = (el('cname').value.trim() || 'anonymous');
+  const btn = el('claim-btn');
+  btn.disabled = true; btn.textContent = 'CLAIMING…';
+
+  try {
+    const res  = await fetch(API_CLAIM, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ collector })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showClaimed(data.entity, data.collector);
+    } else {
+      btn.textContent = data.error || 'FAILED';
+      setTimeout(() => { btn.textContent = 'CLAIM'; btn.disabled = false; }, 3200);
+    }
+  } catch(_e) {
+    btn.textContent = 'ERROR';
+    setTimeout(() => { btn.textContent = 'CLAIM'; btn.disabled = false; }, 3200);
+  }
+}
+
+function showClaimed(entity, collector) {
+  const ov = el('claimed-overlay');
+  el('claimed-summary').innerHTML = `
+    <div style="font-family:'Space Mono',monospace;font-size:1.5rem;color:#fff;margin-bottom:0.7rem">${entity.name}</div>
+    <div style="color:#6d8fff;font-size:0.75rem;letter-spacing:0.1em">${entity.id}</div>
+    <div style="margin:0.55rem 0"><span class="r-badge rc-${entity.rarity}">${entity.rarity.toUpperCase()}</span></div>
+    <div style="color:#3a3f55;font-size:0.72rem;margin-top:0.65rem">
+      claimed by <span style="color:#c4ccdf">${collector}</span>
+    </div>
+    <div style="font-size:0.65rem;color:#3a3f55;margin-top:0.3rem">${entity.sonicFingerprint?.originFreqTag||''}</div>
+    <div style="font-size:0.65rem;color:#3a3f55">Share Value: ${entity.shareValue}</div>
+  `;
+  ov.classList.add('on');
+  sonic.stop();
+  sonic.play(entity.sonicFingerprint);
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+el('enter-btn').addEventListener('click', async () => {
+  await sonic.init();
+
+  const entry = el('entry');
+  const app   = el('app');
+  entry.style.transition = 'opacity 0.9s';
+  entry.style.opacity    = '0';
+  setTimeout(() => { entry.style.display='none'; }, 900);
+  app.classList.add('visible');
+
+  const canvas = el('c');
+  renderer = new SpawnRenderer(canvas);
+  renderer.start();
+
+  await poll();
+  setInterval(poll, POLL_MS);
+});
+
+// Fast timer refresh (interpolates between polls)
+setInterval(() => { if (_liveState) applyTimer(_liveState); }, 280);
+
+el('claim-btn').addEventListener('click', doClaim);
+el('cname').addEventListener('keydown', e => { if (e.key === 'Enter') doClaim(); });
+el('dismiss').addEventListener('click', () => {
+  el('claimed-overlay').classList.remove('on');
+  const btn = el('claim-btn');
+  btn.textContent = 'CLAIM'; btn.disabled = false;
+});
+</script>
+</body>
+</html>
