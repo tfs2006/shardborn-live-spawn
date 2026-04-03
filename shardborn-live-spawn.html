@@ -182,7 +182,7 @@
       display: flex; align-items: center; justify-content: center;
       overflow: hidden; background: var(--bg);
     }
-    #stage canvas { display: block; }
+    #stage canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
     #stage-overlay {
       position: absolute; bottom: 1.6rem; left: 50%;
       transform: translateX(-50%);
@@ -343,6 +343,7 @@
     </div>
     <div class="spawn-badge" id="spawn-badge">SPAWN WINDOW OPEN</div>
     <div class="hdr-space"></div>
+    <button id="snd-btn" title="Mute sound" onclick="toggleSound()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:1.1rem;padding:0 0.5rem;line-height:1;transition:color 0.3s">♪</button>
     <div id="hdr-timer"><span class="lbl">NEXT IN</span><span id="t-val">--:--</span></div>
   </header>
 
@@ -734,11 +735,12 @@ class SpawnRenderer {
 
   _resize() {
     const wrapper = this.cv.parentElement;
-    const sz = Math.min(wrapper.clientWidth || 400, wrapper.clientHeight || 400, 580);
-    this.cv.width  = Math.max(sz, 200);
-    this.cv.height = Math.max(sz, 200);
+    this.cv.width  = Math.max(wrapper.clientWidth  || 400, 200);
+    this.cv.height = Math.max(wrapper.clientHeight || 400, 200);
     this.W = this.cv.width;
     this.H = this.cv.height;
+    // Re-scatter particles if entity exists
+    if (this.ent) this.pts = this._makeParticles(this.ent, this.vit);
   }
 
   setEntity(ent, vit) {
@@ -756,7 +758,7 @@ class SpawnRenderer {
     const pts   = [];
     for (let i = 0; i < count; i++) {
       const angle   = (Math.PI * 2 * i / count) + Math.random() * 0.25;
-      const baseR   = 75 + Math.random() * 90;
+      const baseR   = this.W * 0.13 + Math.random() * this.W * 0.16;
       const spd     = (0.004 + (ent.pressure / 100) * 0.014 + Math.random() * 0.007)
                       * (Math.random() > 0.5 ? 1 : -1);
       pts.push({
@@ -880,7 +882,7 @@ class SpawnRenderer {
   _drawBody(mx, my, ent, pal, cc, rCol, t) {
     const { cx } = this;
     const motion = ent.motion.toLowerCase();
-    const sz     = 50 + (ent.pressure / 100) * 22;
+    const sz     = Math.min(this.W, this.H) * 0.10 + (ent.pressure / 100) * Math.min(this.W, this.H) * 0.04;
     const pulse  = 1 + 0.038 * Math.sin(t * 2.4);
 
     let ox = 0, oy = 0;
@@ -1244,24 +1246,23 @@ function el(id) { return document.getElementById(id); }
 
 // ── UI UPDATES ───────────────────────────────────────────────────────────────
 function applyVitals(vitals, signals) {
-  if (!vitals) return;
-  const cpu = vitals.cpuEstimate || 0;
-  const memPct = Math.min(100, (vitals.memMb / 256) * 100);
-  const thrPct = Math.min(100, (vitals.threadCount / 20) * 100);
-
-  el('v-cpu').textContent  = cpu + '%';
-  el('vb-cpu').style.width = cpu + '%';
-  el('vb-cpu').style.background = cpu>80?'#f87171':cpu>55?'#fbbf24':'#6d8fff';
-  el('v-mem').textContent  = vitals.memMb + ' MB';
-  el('vb-mem').style.width = memPct + '%';
-  el('v-thr').textContent  = vitals.threadCount;
-  el('vb-thr').style.width = thrPct + '%';
-  el('v-load').textContent = vitals.loadAvg1m;
-  el('v-up').textContent   = fmtUptime(vitals.uptimeSec);
-  el('v-req').textContent  = vitals.requestCount;
-  el('v-jit').textContent  = vitals.microJitter;
-  el('s-platform').textContent = vitals.platform || '--';
-
+  if (vitals) {
+    const cpu = vitals.cpuEstimate || 0;
+    const memPct = Math.min(100, (vitals.memMb / 256) * 100);
+    const thrPct = Math.min(100, (vitals.threadCount / 20) * 100);
+    el('v-cpu').textContent  = cpu + '%';
+    el('vb-cpu').style.width = cpu + '%';
+    el('vb-cpu').style.background = cpu>80?'#f87171':cpu>55?'#fbbf24':'#6d8fff';
+    el('v-mem').textContent  = vitals.memMb + ' MB';
+    el('vb-mem').style.width = memPct + '%';
+    el('v-thr').textContent  = vitals.threadCount;
+    el('vb-thr').style.width = thrPct + '%';
+    el('v-load').textContent = vitals.loadAvg1m;
+    el('v-up').textContent   = fmtUptime(vitals.uptimeSec);
+    el('v-req').textContent  = vitals.requestCount;
+    el('v-jit').textContent  = vitals.microJitter;
+    el('s-platform').textContent = vitals.platform || '--';
+  }
   if (signals) {
     el('s-pressure').textContent = signals.pressure;
     el('s-watchers').textContent  = signals.watchers;
@@ -1303,19 +1304,17 @@ function applyEntity(entity) {
   el('t-temp').textContent   = entity.temperament;
   el('t-anom').textContent   = entity.anomaly;
 
-  const sf = entity.sonicFingerprint;
-  if (sf) {
-    el('s-hz').textContent   = sf.fundamentalHz.toFixed(2) + ' Hz';
-    el('s-ftag').textContent = sf.originFreqTag || '';
-    el('freq-tag').textContent = sf.originFreqTag || '';
-    el('s-detail').innerHTML = `
-      <strong>Mode</strong> ${sf.scaleMode} &nbsp;·&nbsp; <strong>Mood</strong> ${sf.moodTag}<br>
-      <strong>Tempo</strong> ${sf.tempo} BPM &nbsp;·&nbsp; <strong>Partials</strong> ${sf.partialCount}<br>
-      <strong>Attack</strong> ${sf.attackMs}ms &nbsp;·&nbsp; <strong>Decay</strong> ${sf.decayMs}ms<br>
-      <strong>Binaural θ-beat</strong> ${sf.binauralBeatHz} Hz<br>
-      <strong>Detune</strong> ${sf.detuneCents > 0 ? '+' : ''}${sf.detuneCents}¢
-    `;
-  }
+  const sf = entity.sonicFingerprint || makeFallbackSonic(entity);
+  el('s-hz').textContent   = sf.fundamentalHz.toFixed(2) + ' Hz';
+  el('s-ftag').textContent = sf.originFreqTag || '';
+  el('freq-tag').textContent = sf.originFreqTag || '';
+  el('s-detail').innerHTML = `
+    <strong>Mode</strong> ${sf.scaleMode} &nbsp;·&nbsp; <strong>Mood</strong> ${sf.moodTag}<br>
+    <strong>Tempo</strong> ${sf.tempo} BPM &nbsp;·&nbsp; <strong>Partials</strong> ${sf.partialCount}<br>
+    <strong>Attack</strong> ${sf.attackMs}ms &nbsp;·&nbsp; <strong>Decay</strong> ${sf.decayMs}ms<br>
+    <strong>Binaural θ-beat</strong> ${sf.binauralBeatHz} Hz<br>
+    ${sf.detuneCents != null ? `<strong>Detune</strong> ${sf.detuneCents > 0 ? '+' : ''}${sf.detuneCents}¢` : ''}
+  `;
 
   el('e-sv').textContent   = entity.shareValue;
   el('e-born').textContent = 'Born: ' + new Date(entity.bornAt).toLocaleString();
@@ -1349,9 +1348,39 @@ function applyTimer(state) {
   }
 }
 
+// ── FALLBACK SONIC (client-side, when oracle is older version) ───────────────
+const _ORIGIN_HZ = { Ash:396, Tide:528, Bloom:639, Static:417, Dusk:285, Void:174, Aurora:852, Iron:256, Glass:963, Storm:741 };
+const _ORIGIN_TAG= { Ash:'396 Hz · Liberation', Tide:'528 Hz · Love frequency', Bloom:'639 Hz · Connection', Static:'417 Hz · Change', Dusk:'285 Hz · Healing', Void:'174 Hz · Foundation', Aurora:'852 Hz · Spiritual', Iron:'256 Hz · Earth C', Glass:'963 Hz · Divine', Storm:'741 Hz · Intuition' };
+const _TMODES   = { Watchful:'dorian', Hungry:'phrygian', Dormant:'aeolian', Mimic:'lydian', Territorial:'phrygian_dominant', Blessed:'lydian', Patient:'pentatonic_minor', Chaotic:'whole_tone', Prophetic:'lydian', Jealous:'locrian' };
+const _RPARTS   = { Common:2, Uncommon:3, Rare:4, Epic:5, Legendary:7, Mythic:9 };
+const _TTIMING  = { Watchful:[820,4200], Hungry:[70,580], Dormant:[2400,7000], Mimic:[380,2400], Territorial:[160,2600], Blessed:[620,4800], Patient:[1700,8000], Chaotic:[40,340], Prophetic:[980,6000], Jealous:[260,1700] };
+function makeFallbackSonic(entity) {
+  const base   = _ORIGIN_HZ[entity.origin]   || 432;
+  const parts  = _RPARTS[entity.rarity]      || 3;
+  const [atk, dec] = _TTIMING[entity.temperament] || [600, 2000];
+  const tempo  = 36 + (entity.pressure / 100) * 46 + (entity.streak || 7) % 14 * 1.8;
+  const ratios = Array.from({length: parts}, (_, i) => i + 1);
+  const binaural = 4 + (entity.watchers % 40) / 10;
+  const mood   = entity.temperament ? entity.temperament.toLowerCase() : 'meditative';
+  return {
+    fundamentalHz:  base,
+    scaleMode:      _TMODES[entity.temperament] || 'dorian',
+    tempo:          Math.round(tempo * 10) / 10,
+    harmonicRatios: ratios,
+    moodTag:        mood,
+    attackMs:       atk,
+    decayMs:        dec,
+    partialCount:   parts,
+    detuneCents:    null,
+    binauralBeatHz: Math.round(binaural * 100) / 100,
+    originFreqTag:  _ORIGIN_TAG[entity.origin] || '432 Hz · Universal',
+  };
+}
+
 // ── POLL ─────────────────────────────────────────────────────────────────────
 const sonic    = new SonicEngine();
 let renderer   = null;
+let _soundMuted = false;
 
 async function poll() {
   try {
@@ -1375,8 +1404,10 @@ async function poll() {
       // Trigger sound once per spawn slot
       if (ent && slot !== _lastSonSlot && data.claimable) {
         _lastSonSlot = slot;
-        sonic.stop();
-        sonic.play(ent.sonicFingerprint);
+        if (!_soundMuted) {
+          sonic.stop();
+          sonic.play(ent.sonicFingerprint || makeFallbackSonic(ent));
+        }
       }
     }
   } catch (_e) {
@@ -1424,7 +1455,33 @@ function showClaimed(entity, collector) {
   `;
   ov.classList.add('on');
   sonic.stop();
-  sonic.play(entity.sonicFingerprint);
+  if (!_soundMuted) sonic.play(entity.sonicFingerprint || makeFallbackSonic(entity));
+  _lastClaimedSf = entity.sonicFingerprint || makeFallbackSonic(entity);
+}
+
+// ── SOUND CONTROLS ───────────────────────────────────────────────────────────
+let _lastClaimedSf = null;
+function toggleSound() {
+  _soundMuted = !_soundMuted;
+  const btn = el('snd-btn');
+  if (_soundMuted) {
+    sonic.stop();
+    btn.style.color = 'var(--dim)';
+    btn.title = 'Unmute sound';
+    btn.textContent = '🔇';
+  } else {
+    btn.style.color = 'var(--accent)';
+    btn.title = 'Mute sound';
+    btn.textContent = '♪';
+    // Replay last spawn sound if in window
+    if (_liveState?.claimable && _liveState?.current) {
+      sonic.stop();
+      sonic.play(_liveState.current.sonicFingerprint || makeFallbackSonic(_liveState.current));
+    } else if (_lastClaimedSf) {
+      sonic.stop();
+      sonic.play(_lastClaimedSf);
+    }
+  }
 }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
@@ -1455,6 +1512,10 @@ el('dismiss').addEventListener('click', () => {
   el('claimed-overlay').classList.remove('on');
   const btn = el('claim-btn');
   btn.textContent = 'CLAIM'; btn.disabled = false;
+  // If spawn window has closed, show a calm 'claimed' state instead of empty panel
+  if (!_liveState?.claimable && _lastClaimedSf) {
+    el('stage-msg').textContent = 'SPAWN CLAIMED · LISTENING';
+  }
 });
 </script>
 </body>
