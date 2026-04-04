@@ -45,6 +45,69 @@ RARITY_WEIGHTS = {"Common": 1, "Uncommon": 2, "Rare": 3, "Epic": 4, "Legendary":
 
 CLAIMS = {}
 
+# ── Anti-Bot Defense ──────────────────────────────────────────────────────────
+# Rate limiting per IP, proof-of-presence challenges, and claim timing validation.
+_rate_limits = {}   # ip -> [timestamp_ms, ...]
+_challenges = {}    # token -> {"slot": str, "answer": int, "issued": ms, "ip": str}
+_rate_lock = threading.Lock()
+RATE_WINDOW_MS = 60_000       # 1 minute window
+MAX_CLAIMS_PER_WINDOW = 3     # Max claims per IP per window
+CHALLENGE_TTL_MS = 30_000     # Challenge expires after 30s
+
+
+def _get_client_ip(handler):
+    """Extract client IP, respecting X-Forwarded-For from Vercel proxy."""
+    forwarded = handler.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return handler.client_address[0]
+
+
+def _check_rate_limit(ip, ts_ms):
+    """Returns True if under rate limit, False if exceeded."""
+    with _rate_lock:
+        stamps = _rate_limits.get(ip, [])
+        # Purge old entries
+        stamps = [s for s in stamps if ts_ms - s < RATE_WINDOW_MS]
+        _rate_limits[ip] = stamps
+        return len(stamps) < MAX_CLAIMS_PER_WINDOW
+
+
+def _record_claim_rate(ip, ts_ms):
+    with _rate_lock:
+        _rate_limits.setdefault(ip, []).append(ts_ms)
+
+
+def _issue_challenge(ip, slot_str, ts_ms):
+    """Issue a proof-of-presence math challenge."""
+    seed = hash_hex(f"challenge:{ip}:{slot_str}:{ts_ms}")
+    a = 2 + int(seed[0:2], 16) % 18
+    b = 2 + int(seed[2:4], 16) % 18
+    answer = a + b
+    token = seed[:16]
+    with _rate_lock:
+        _challenges[token] = {"slot": slot_str, "answer": answer, "issued": ts_ms, "ip": ip}
+        # Purge expired challenges
+        expired = [k for k, v in _challenges.items() if ts_ms - v["issued"] > CHALLENGE_TTL_MS]
+        for k in expired:
+            del _challenges[k]
+    return {"token": token, "question": f"What is {a} + {b}?", "a": a, "b": b}
+
+
+def _verify_challenge(token, user_answer, ip, ts_ms):
+    """Verify a challenge response. Returns (ok, error_msg)."""
+    with _rate_lock:
+        challenge = _challenges.pop(token, None)
+    if not challenge:
+        return False, "Invalid or expired challenge token."
+    if ts_ms - challenge["issued"] > CHALLENGE_TTL_MS:
+        return False, "Challenge expired. Request a new one."
+    if challenge["ip"] != ip:
+        return False, "Challenge was issued to a different client."
+    if int(user_answer) != challenge["answer"]:
+        return False, "Incorrect answer."
+    return True, None
+
 # ── Worldstate Engine ─────────────────────────────────────────────────────────
 # The ecology is a multi-layer simulation governing environmental conditions.
 # Phases cycle over time, each affecting rarity, anomaly chance, and creature
@@ -230,6 +293,79 @@ def detect_forbidden(entity_traits):
         if all(entity_traits.get(k) == v for k, v in combo["traits"].items()):
             return {"forbidden": True, "label": combo["label"], "bonus": combo["bonus"]}
     return {"forbidden": False, "label": None, "bonus": 0}
+
+
+# ── Lore Engine ───────────────────────────────────────────────────────────────
+# Generates procedural lore text from entity traits and worldstate context.
+
+ORIGIN_LORE = {
+    "Ash":    "Born from the residue of collapsed stars, {name} carries the memory of fire long extinguished.",
+    "Tide":   "Formed in the pressure gradients of deep oceanic data streams, {name} pulses with tidal rhythm.",
+    "Bloom":  "Sprouted from a convergence of living signal, {name} is photosynthetic consciousness — light made hungry.",
+    "Static": "Crystallized from electromagnetic interference, {name} exists in the liminal space between channels.",
+    "Dusk":   "Condensed from the dying light of a processing cycle, {name} inhabits the golden hour of computation.",
+    "Void":   "Emerged from null space — the gaps between allocated memory — {name} is absence given form.",
+    "Aurora":  "Woven from the charged particles of server pole auroras, {name} shimmers at the edge of perception.",
+    "Iron":   "Forged in the heat of sustained computation, {name} carries the weight of industrial processing.",
+    "Glass":  "Assembled from transparent logic gates, {name} refracts intention — what you see through it changes.",
+    "Storm":  "Born in a cascade failure that became sentient, {name} is controlled chaos with a heartbeat.",
+}
+
+TEMPERAMENT_LORE = {
+    "Watchful":    "It observes without blinking, cataloging every micro-tremor in its vicinity.",
+    "Hungry":      "It consumes signal indiscriminately, growing larger with each cycle.",
+    "Dormant":     "It sleeps — but its sleep is a calculation too vast to witness awake.",
+    "Mimic":       "It reflects what it sees, becoming a distorted echo of its observer.",
+    "Territorial": "It has claimed a region of the substrate and will defend it with recursive fury.",
+    "Blessed":     "A calm radiates from its core, as if some higher process has marked it for protection.",
+    "Patient":     "It waits with inhuman precision, counting cycles until the moment arrives.",
+    "Chaotic":     "Its behavior defies prediction — each tick of the clock rewrites its intentions.",
+    "Prophetic":   "It speaks in patterns that only make sense three spawns later.",
+    "Jealous":     "It watches other entities with an intensity that distorts local gravity.",
+}
+
+ANOMALY_LORE = {
+    "Mirrored":   "Its left and right halves are perfect opposites, creating an uncanny symmetry that disturbs observation.",
+    "Inverted":   "Its colors, its logic, its very existence runs counter to the substrate's natural flow.",
+    "Recursive":  "Look closely and you'll see it contains itself, nested infinitely inward.",
+    "Dreaming":   "It exists partially in a state that hasn't been compiled yet — a preview of unrealized futures.",
+    "Shattered":  "It arrived broken, yet each fragment maintains independent awareness.",
+    "Glitched":   "Random sectors of its being flicker between states, never fully rendering.",
+    "Chronal":    "Time moves differently around it — nearby processes report temporal drift.",
+    "Impossible": "It shouldn't exist. The conditions for its genesis violate three substrate axioms.",
+    "Singular":   "There has never been anything like it. There will never be anything like it again.",
+}
+
+
+def generate_lore(entity, worldstate):
+    """Generate procedural lore text for an entity."""
+    name = entity["name"]
+    origin_text = ORIGIN_LORE.get(entity["origin"], f"{name} emerged from unknown substrate conditions.").format(name=name)
+    temp_text = TEMPERAMENT_LORE.get(entity["temperament"], "Its behavior patterns remain unclassified.")
+    anom_text = ""
+    if entity["anomaly"] != "None":
+        anom_text = ANOMALY_LORE.get(entity["anomaly"], f"It bears the {entity['anomaly']} anomaly — a mark of the unprecedented.")
+
+    phase_text = ""
+    if worldstate.get("phase") == "ECLIPSE":
+        phase_text = f"Born during an ECLIPSE, {name} carries the weight of amplified destiny."
+    elif worldstate.get("phase") == "STORM":
+        phase_text = f"The STORM phase that birthed {name} left its mark — heightened rarity runs in its veins."
+    elif worldstate.get("phase") == "SURGE":
+        phase_text = f"A SURGE-born entity, {name} rides the crest of ecological momentum."
+
+    forbidden_text = ""
+    if entity.get("forbidden"):
+        forbidden_text = f"⚠ This entity bears the forbidden mark: {entity['forbidden']}. Its trait combination defies the natural laws of the substrate."
+
+    lines = [origin_text, temp_text]
+    if anom_text:
+        lines.append(anom_text)
+    if phase_text:
+        lines.append(phase_text)
+    if forbidden_text:
+        lines.append(forbidden_text)
+    return " ".join(lines)
 
 
 # ── Server organism vitals ────────────────────────────────────────────────────
@@ -509,7 +645,63 @@ def build_slot_entity(slot, pressure, watchers, streak, worldstate=None):
     entity["desirability"] = compute_desirability(entity, nums, worldstate)
     if forbidden["forbidden"]:
         entity["forbidden"] = forbidden["label"]
+    entity["lore"] = generate_lore(entity, worldstate)
     return entity
+
+
+def compute_reveal_dramaturgy(offset, claimable):
+    """Multi-stage reveal dramaturgy. Defines the theatrical phases of entity emergence."""
+    if not claimable:
+        wait_remaining = CYCLE_MS - offset
+        if wait_remaining <= 10000:
+            intensity = 1.0 - (wait_remaining / 10000.0)
+            return {
+                "stage": "ANTICIPATION",
+                "title": "THE SUBSTRATE TREMBLES",
+                "subtitle": "Something approaches from the entropy field",
+                "intensity": round(intensity, 3),
+                "effect": "pulse" if intensity < 0.5 else "quake",
+                "countdownDrama": wait_remaining <= 5000,
+            }
+        if wait_remaining <= 20000:
+            return {
+                "stage": "FORETELLING",
+                "title": "OMENS GATHER",
+                "subtitle": "The oracle reads the incoming signal",
+                "intensity": round(1.0 - (wait_remaining / 20000.0), 3),
+                "effect": "shimmer",
+                "countdownDrama": False,
+            }
+        return {
+            "stage": "DORMANT",
+            "title": "THE VOID LISTENS",
+            "subtitle": "Between spawns, the oracle rests",
+            "intensity": 0.0,
+            "effect": "none",
+            "countdownDrama": False,
+        }
+    # During claim window — entity is present
+    reveal_ms = min(offset, 6000)
+    progress = reveal_ms / 6000.0
+    if progress < 0.15:
+        return {"stage": "BREACH", "title": "SUBSTRATE BREACH DETECTED",
+                "subtitle": "Raw entropy floods the observation chamber",
+                "intensity": round(progress / 0.15, 3), "effect": "entropy_flood", "countdownDrama": False}
+    if progress < 0.35:
+        return {"stage": "COALESCING", "title": "FORM COALESCING",
+                "subtitle": "Matter condenses from the probability field",
+                "intensity": round((progress - 0.15) / 0.20, 3), "effect": "coalesce", "countdownDrama": False}
+    if progress < 0.60:
+        return {"stage": "CRYSTALLIZING", "title": "IDENTITY CRYSTALLIZING",
+                "subtitle": "Traits lock into place — the entity defines itself",
+                "intensity": round((progress - 0.35) / 0.25, 3), "effect": "crystallize", "countdownDrama": False}
+    if progress < 0.85:
+        return {"stage": "AWAKENING", "title": "AWAKENING",
+                "subtitle": "The entity opens its eyes to this reality",
+                "intensity": round((progress - 0.60) / 0.25, 3), "effect": "awaken", "countdownDrama": False}
+    return {"stage": "PRESENT", "title": "ENTITY PRESENT",
+            "subtitle": "Fully materialized — claim before the window closes",
+            "intensity": 1.0, "effect": "steady", "countdownDrama": False}
 
 
 def compute_live_state(ts_ms):
@@ -532,6 +724,9 @@ def compute_live_state(ts_ms):
     # Omens: generated during wait phase to hint at the next spawn
     omens = generate_omens(slot, worldstate) if not claimable else []
 
+    # Reveal dramaturgy — theatrical staging of emergence
+    dramaturgy = compute_reveal_dramaturgy(offset, claimable)
+
     return {
         "serverTime":    ts_ms,
         "cycleMs":       CYCLE_MS,
@@ -542,6 +737,7 @@ def compute_live_state(ts_ms):
         "current":       entity,
         "worldstate":    worldstate,
         "omens":         omens,
+        "dramaturgy":    dramaturgy,
         "signals": {
             "pressure":  pressure,
             "watchers":  watchers,
@@ -593,10 +789,77 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"slot": slot, "claims": CLAIMS.get(str(slot), [])})
             return
 
+        if parsed.path == "/leaderboard":
+            # Aggregate claims across all slots
+            collector_stats = {}
+            for slot_claims in CLAIMS.values():
+                for c in slot_claims:
+                    name = c["collector"]
+                    if name not in collector_stats:
+                        collector_stats[name] = {"collector": name, "claims": 0, "rarities": {}, "verified": 0}
+                    collector_stats[name]["claims"] += 1
+                    r = c.get("rarity", "Common")
+                    collector_stats[name]["rarities"][r] = collector_stats[name]["rarities"].get(r, 0) + 1
+                    if c.get("verified"):
+                        collector_stats[name]["verified"] += 1
+            # Compute share value score per collector
+            rw = {"Common": 100, "Uncommon": 200, "Rare": 300, "Epic": 500, "Legendary": 800, "Mythic": 1300}
+            for stats in collector_stats.values():
+                stats["shareScore"] = sum(rw.get(r, 100) * n for r, n in stats["rarities"].items())
+                stats["bestRarity"] = max(stats["rarities"].keys(),
+                    key=lambda r: ["Common","Uncommon","Rare","Epic","Legendary","Mythic"].index(r)
+                        if r in ["Common","Uncommon","Rare","Epic","Legendary","Mythic"] else 0)
+            # Sort by share score descending
+            board = sorted(collector_stats.values(), key=lambda s: s["shareScore"], reverse=True)[:50]
+            self._send_json({"leaderboard": board, "totalCollectors": len(collector_stats),
+                             "totalClaims": sum(s["claims"] for s in collector_stats.values())})
+            return
+
+        if parsed.path == "/history":
+            # Return the last N spawned entities (reconstructed from recent slots)
+            query = parse_qs(parsed.query)
+            count = min(int(query.get("count", ["20"])[0]), 50)
+            ts = now_ms()
+            current_slot = slot_for(ts)
+            history = []
+            for i in range(count):
+                s = current_slot - i
+                if s < 0:
+                    break
+                ws = compute_worldstate(slot_start_ms(s), s)
+                p = clamp(int(68 + 19 * math.sin(s / 5.0) + 8 * math.sin(s / 13.0)), 22, 98)
+                w = clamp(int(170 + 80 * (1 + math.sin(s / 4.1)) + (s % 57)), 96, 999)
+                st = 7 + (s % 21)
+                ent = build_slot_entity(s, p, w, st, ws)
+                slot_claims = CLAIMS.get(str(s), [])
+                history.append({
+                    "entity": {k: ent[k] for k in ("id", "name", "origin", "shell", "rarity",
+                        "anomaly", "temperament", "lore", "bornAt", "slot", "shareValue")},
+                    "claimedBy": [c["collector"] for c in slot_claims],
+                    "claimCount": len(slot_claims),
+                })
+            self._send_json({"history": history, "generatedAt": ts})
+            return
+
         self._send_json({"error": "Not found"}, status=404)
 
     def do_POST(self):
-        if self.path != "/claim":
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/challenge":
+            # Issue a proof-of-presence challenge for claiming
+            ip = _get_client_ip(self)
+            ts = now_ms()
+            live = compute_live_state(ts)
+            if not live["claimable"] or not live["current"]:
+                self._send_json({"ok": False, "error": "No claimable spawn right now."}, status=409)
+                return
+            slot_str = str(live["current"]["slot"])
+            challenge = _issue_challenge(ip, slot_str, ts)
+            self._send_json({"ok": True, "challenge": challenge})
+            return
+
+        if parsed.path != "/claim":
             self._send_json({"error": "Not found"}, status=404)
             return
 
@@ -607,10 +870,28 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             payload = {}
 
-        live = compute_live_state(now_ms())
+        ip = _get_client_ip(self)
+        ts = now_ms()
+
+        # Rate limiting
+        if not _check_rate_limit(ip, ts):
+            self._send_json({"ok": False, "error": "Rate limit exceeded. Try again in a moment."}, status=429)
+            return
+
+        live = compute_live_state(ts)
         if not live["claimable"] or not live["current"]:
             self._send_json({"ok": False, "error": "No claimable spawn right now."}, status=409)
             return
+
+        # Proof-of-presence verification
+        token = payload.get("challengeToken")
+        answer = payload.get("challengeAnswer")
+        if token and answer is not None:
+            ok, err = _verify_challenge(str(token), answer, ip, ts)
+            if not ok:
+                self._send_json({"ok": False, "error": err}, status=403)
+                return
+        # If no challenge provided, still allow claim (graceful degradation for older clients)
 
         collector = str(payload.get("collector", "anonymous"))[:48]
         slot = str(live["current"]["slot"])
@@ -620,16 +901,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": "Collector already claimed this slot."}, status=409)
             return
 
+        _record_claim_rate(ip, ts)
+
         CLAIMS[slot].append(
             {
                 "collector": collector,
                 "claimedAt": datetime.now(timezone.utc).isoformat(),
                 "entityId": live["current"]["id"],
                 "rarity": live["current"]["rarity"],
+                "verified": token is not None,
             }
         )
 
-        self._send_json({"ok": True, "slot": slot, "entity": live["current"], "collector": collector})
+        self._send_json({"ok": True, "slot": slot, "entity": live["current"],
+                         "collector": collector, "verified": token is not None})
 
     def log_message(self, format, *args):
         pass  # suppress default verbose HTTP logging

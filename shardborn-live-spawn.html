@@ -368,6 +368,241 @@
     }
     .eco-val { font-size: 0.62rem; color: var(--text); font-family: 'Space Mono', monospace; }
 
+    /* ── REVEAL DRAMATURGY ──────────────────────────────────────── */
+    #dramaturgy-overlay {
+      position: absolute; inset: 0; z-index: 4;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      pointer-events: none; transition: opacity 0.8s;
+    }
+    #drama-title {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(0.7rem, 2.2vw, 1.1rem);
+      letter-spacing: 0.35em; color: rgba(255,255,255,0);
+      text-transform: uppercase; text-align: center;
+      transition: color 1.2s, text-shadow 1.2s, letter-spacing 1.2s;
+      user-select: none;
+    }
+    #drama-title.active {
+      color: rgba(255,255,255,0.65);
+      text-shadow: 0 0 30px rgba(109,143,255,0.4);
+    }
+    #drama-title.breach {
+      color: rgba(248,113,113,0.85);
+      text-shadow: 0 0 40px rgba(248,113,113,0.5);
+      letter-spacing: 0.5em;
+      animation: dramaPulse 0.6s ease-in-out infinite;
+    }
+    #drama-title.coalesce {
+      color: rgba(109,143,255,0.75);
+      text-shadow: 0 0 35px rgba(109,143,255,0.4);
+    }
+    #drama-title.crystallize {
+      color: rgba(52,211,153,0.8);
+      text-shadow: 0 0 35px rgba(52,211,153,0.3);
+    }
+    #drama-title.awaken {
+      color: rgba(251,191,36,0.85);
+      text-shadow: 0 0 40px rgba(251,191,36,0.4);
+    }
+    #drama-subtitle {
+      font-size: 0.6rem; color: rgba(255,255,255,0);
+      letter-spacing: 0.15em; margin-top: 0.6rem;
+      text-align: center; transition: color 1.2s;
+      user-select: none;
+    }
+    #drama-subtitle.active { color: rgba(255,255,255,0.28); }
+    @keyframes dramaPulse {
+      0%,100% { opacity: 1; } 50% { opacity: 0.6; }
+    }
+    #drama-progress {
+      width: 120px; height: 2px; margin-top: 1rem;
+      background: rgba(255,255,255,0.05); border-radius: 2px;
+      overflow: hidden; opacity: 0; transition: opacity 0.8s;
+    }
+    #drama-progress.active { opacity: 1; }
+    #drama-progress-fill {
+      height: 100%; width: 0%; border-radius: 2px;
+      background: var(--accent); transition: width 0.6s ease, background 0.4s;
+    }
+
+    /* Anticipation screen shake */
+    @keyframes anticipateShake {
+      0%,100% { transform: translate(0,0); }
+      10% { transform: translate(-1px, 1px); }
+      30% { transform: translate(1px, -1px); }
+      50% { transform: translate(-2px, 0); }
+      70% { transform: translate(1px, 1px); }
+      90% { transform: translate(0, -1px); }
+    }
+    #stage.anticipate { animation: anticipateShake 0.25s ease infinite; }
+    #stage.anticipate-strong { animation: anticipateShake 0.15s ease infinite; }
+
+    /* ── COLLECTION PANEL ──────────────────────────────────────── */
+    #collection-toggle {
+      position: fixed; bottom: 1rem; left: 1rem; z-index: 40;
+      padding: 0.45rem 0.9rem; background: rgba(8,10,18,0.92);
+      border: 1px solid var(--border); color: var(--accent);
+      font-family: 'Space Mono', monospace; font-size: 0.6rem;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.3s; backdrop-filter: blur(8px);
+    }
+    #collection-toggle:hover { border-color: rgba(109,143,255,0.5); box-shadow: 0 0 18px rgba(109,143,255,0.15); }
+    #collection-panel {
+      position: fixed; bottom: 0; left: 0; z-index: 45;
+      width: 360px; max-height: 70vh;
+      background: rgba(8,10,18,0.96); border-right: 1px solid var(--border);
+      border-top: 1px solid var(--border); backdrop-filter: blur(14px);
+      transform: translateY(100%); transition: transform 0.4s ease;
+      overflow-y: auto; padding: 1.2rem;
+      display: flex; flex-direction: column; gap: 0.8rem;
+    }
+    #collection-panel.open { transform: translateY(0); }
+    .coll-header {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .coll-header h3 {
+      font-family: 'Space Mono', monospace; font-size: 0.72rem;
+      letter-spacing: 0.25em; color: #fff; text-transform: uppercase;
+    }
+    .coll-close {
+      background: none; border: none; color: var(--dim);
+      font-size: 1rem; cursor: pointer; padding: 0.2rem;
+    }
+    .coll-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem; }
+    .coll-stat {
+      padding: 0.4rem; background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border); text-align: center;
+    }
+    .coll-stat .cs-val { font-family: 'Space Mono', monospace; font-size: 1rem; color: #fff; }
+    .coll-stat .cs-lbl { font-size: 0.5rem; color: var(--dim); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 0.15rem; }
+    .achv-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .achv-badge {
+      padding: 0.2rem 0.5rem; font-family: 'Space Mono', monospace;
+      font-size: 0.5rem; letter-spacing: 0.1em; border-radius: 2px;
+      border: 1px solid; text-transform: uppercase;
+    }
+    .achv-badge.locked { color: #2a2f42; border-color: #1a1e2e; background: rgba(255,255,255,0.01); }
+    .achv-badge.unlocked { animation: achvGlow 2s ease infinite; }
+    @keyframes achvGlow { 0%,100%{opacity:1} 50%{opacity:0.7} }
+    .coll-entity-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.35rem 0; border-top: 1px solid var(--border);
+      font-size: 0.62rem;
+    }
+    .coll-entity-name { color: var(--text); font-family: 'Space Mono', monospace; }
+    .coll-entity-rarity { font-family: 'Space Mono', monospace; font-size: 0.54rem; }
+    .coll-entity-time { font-size: 0.5rem; color: var(--dim); }
+
+    /* ── LEADERBOARD PANEL ─────────────────────────────────────── */
+    #leaderboard-toggle {
+      position: fixed; bottom: 1rem; left: 13rem; z-index: 40;
+      padding: 0.45rem 0.9rem; background: rgba(8,10,18,0.92);
+      border: 1px solid var(--border); color: var(--accent);
+      font-family: 'Space Mono', monospace; font-size: 0.6rem;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.3s; backdrop-filter: blur(8px);
+    }
+    #leaderboard-toggle:hover { border-color: rgba(109,143,255,0.5); box-shadow: 0 0 18px rgba(109,143,255,0.15); }
+    #leaderboard-panel {
+      position: fixed; bottom: 0; right: 0; z-index: 45;
+      width: 360px; max-height: 70vh;
+      background: rgba(8,10,18,0.96); border-left: 1px solid var(--border);
+      border-top: 1px solid var(--border); backdrop-filter: blur(14px);
+      transform: translateY(100%); transition: transform 0.4s ease;
+      overflow-y: auto; padding: 1.2rem;
+      display: flex; flex-direction: column; gap: 0.8rem;
+    }
+    #leaderboard-panel.open { transform: translateY(0); }
+    .lb-row {
+      display: grid; grid-template-columns: 24px 1fr 60px 50px;
+      gap: 0.4rem; align-items: center;
+      padding: 0.35rem 0; border-bottom: 1px solid var(--border);
+      font-size: 0.62rem;
+    }
+    .lb-rank { font-family: 'Space Mono', monospace; color: var(--dim); text-align: center; }
+    .lb-rank.top1 { color: #fbbf24; } .lb-rank.top2 { color: #94a3b8; } .lb-rank.top3 { color: #cd7f32; }
+    .lb-name { color: var(--text); font-family: 'Space Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-score { font-family: 'Space Mono', monospace; color: var(--accent); text-align: right; }
+    .lb-claims { font-family: 'Space Mono', monospace; color: var(--dim); text-align: right; font-size: 0.54rem; }
+    .lb-summary { font-size: 0.6rem; color: var(--dim); text-align: center; padding: 0.3rem 0; }
+
+    /* ── LORE DISPLAY ──────────────────────────────────────────── */
+    #lore-section {
+      margin-top: 0.8rem; padding: 0.7rem 0.9rem;
+      background: rgba(109,143,255,0.04); border: 1px solid rgba(109,143,255,0.12);
+      border-radius: 4px; display: none;
+    }
+    #lore-section.visible { display: block; }
+    #lore-label {
+      font-family: 'Space Mono', monospace; font-size: 0.5rem;
+      letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent);
+      margin-bottom: 0.4rem;
+    }
+    #lore-text {
+      font-family: 'EB Garamond', serif; font-size: 0.82rem;
+      line-height: 1.55; color: var(--text); font-style: italic;
+      opacity: 0.88;
+    }
+
+    /* ── HISTORY PANEL ────────────────────────────────────────── */
+    #history-toggle {
+      position: fixed; bottom: 1rem; left: 24rem; z-index: 40;
+      padding: 0.45rem 0.9rem; background: rgba(8,10,18,0.92);
+      border: 1px solid var(--border); color: var(--accent);
+      font-family: 'Space Mono', monospace; font-size: 0.6rem;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.3s; backdrop-filter: blur(8px);
+    }
+    #history-toggle:hover { border-color: rgba(109,143,255,0.5); box-shadow: 0 0 18px rgba(109,143,255,0.15); }
+    #history-panel {
+      position: fixed; bottom: 0; left: 0; z-index: 46;
+      width: 380px; max-height: 70vh;
+      background: rgba(8,10,18,0.96); border-right: 1px solid var(--border);
+      border-top: 1px solid var(--border); backdrop-filter: blur(14px);
+      transform: translateY(100%); transition: transform 0.4s ease;
+      overflow-y: auto; padding: 1.2rem;
+      display: flex; flex-direction: column; gap: 0.6rem;
+    }
+    #history-panel.open { transform: translateY(0); }
+    .hist-header {
+      font-family: 'Space Mono', monospace; font-size: 0.6rem;
+      letter-spacing: 0.25em; text-transform: uppercase;
+      color: var(--accent); border-bottom: 1px solid var(--border);
+      padding-bottom: 0.4rem;
+    }
+    .hist-entry {
+      padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+    }
+    .hist-entity-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.25rem;
+    }
+    .hist-entity-name {
+      font-family: 'Space Mono', monospace; font-size: 0.68rem;
+      color: var(--text);
+    }
+    .hist-entity-rarity {
+      font-family: 'Space Mono', monospace; font-size: 0.54rem;
+      padding: 0.1rem 0.4rem; border-radius: 3px;
+    }
+    .hist-entity-lore {
+      font-family: 'EB Garamond', serif; font-size: 0.7rem;
+      line-height: 1.4; color: var(--dim); font-style: italic;
+      margin-top: 0.2rem;
+      max-height: 0; overflow: hidden; transition: max-height 0.3s ease;
+    }
+    .hist-entity-lore.expanded { max-height: 200px; }
+    .hist-claims {
+      font-size: 0.52rem; color: var(--dim); margin-top: 0.15rem;
+    }
+    .hist-toggle-lore {
+      font-family: 'Space Mono', monospace; font-size: 0.48rem;
+      color: var(--accent); cursor: pointer; background: none; border: none;
+      padding: 0; margin-top: 0.15rem; letter-spacing: 0.1em;
+    }
+    .hist-toggle-lore:hover { text-decoration: underline; }
+
     /* ── RESPONSIVE ────────────────────────────────────────────── */
     @media (max-width: 860px) {
       body { overflow-y: auto; }
@@ -497,6 +732,11 @@
   <!-- Center: Canvas Stage -->
   <main id="stage">
     <canvas id="c"></canvas>
+    <div id="dramaturgy-overlay">
+      <div id="drama-title"></div>
+      <div id="drama-subtitle"></div>
+      <div id="drama-progress"><div id="drama-progress-fill"></div></div>
+    </div>
     <div id="stage-overlay">
       <div id="countdown"></div>
       <div id="stage-msg">AWAITING ORACLE</div>
@@ -553,11 +793,57 @@
         <span class="svl">Share Value</span>
         <span class="svv" id="e-sv">—</span>
       </div>
+      <div id="lore-section">
+        <div id="lore-label">⌁ LORE</div>
+        <div id="lore-text"></div>
+      </div>
       <div id="e-born">—</div>
       <div class="claim-count-line" id="e-claimcount"></div>
     </div>
   </aside>
 
+</div>
+
+<!-- ── COLLECTION PANEL ───────────────────────────────────────────── -->
+<button id="collection-toggle" style="display:none">COLLECTION · <span id="coll-count">0</span></button>
+<button id="leaderboard-toggle">LEADERBOARD</button>
+<div id="collection-panel">
+  <div class="coll-header">
+    <h3>My Collection</h3>
+    <button class="coll-close" onclick="toggleCollection()">&times;</button>
+  </div>
+  <div class="coll-stats">
+    <div class="coll-stat"><div class="cs-val" id="cs-total">0</div><div class="cs-lbl">Claimed</div></div>
+    <div class="coll-stat"><div class="cs-val" id="cs-unique">0</div><div class="cs-lbl">Unique</div></div>
+    <div class="coll-stat"><div class="cs-val" id="cs-rarest">—</div><div class="cs-lbl">Rarest</div></div>
+  </div>
+  <div class="p-title" style="margin-top:0.3rem">Achievements</div>
+  <div class="achv-grid" id="achv-grid"></div>
+  <div class="p-title" style="margin-top:0.5rem">Rarity Breakdown</div>
+  <div id="coll-rarity-breakdown"></div>
+  <div class="p-title" style="margin-top:0.5rem">Recent Claims</div>
+  <div id="coll-list"></div>
+</div>
+
+<!-- ── LEADERBOARD PANEL ──────────────────────────────────────────── -->
+<div id="leaderboard-panel">
+  <div class="coll-header">
+    <h3>Leaderboard</h3>
+    <button class="coll-close" onclick="toggleLeaderboard()">&times;</button>
+  </div>
+  <div class="lb-summary" id="lb-summary">Loading...</div>
+  <div id="lb-list"></div>
+</div>
+
+<!-- ── HISTORY PANEL ──────────────────────────────────────────────────── -->
+<button id="history-toggle">HISTORY</button>
+<div id="history-panel">
+  <div class="coll-header">
+    <h3>Spawn History</h3>
+    <button class="coll-close" onclick="toggleHistory()">&times;</button>
+  </div>
+  <div class="hist-header">Recent Entities</div>
+  <div id="hist-list">Loading...</div>
 </div>
 
 <!-- ── CLAIM SUCCESS OVERLAY ─────────────────────────────────────────── -->
@@ -575,6 +861,8 @@
 const POLL_MS  = 3800;
 const API_STATE = '/api/state';
 const API_CLAIM = '/api/claim';
+const API_CHALLENGE = '/api/challenge';
+const API_HISTORY = '/api/history';
 
 // ── ORIGIN PALETTES ──────────────────────────────────────────────────────────
 const PAL = {
@@ -1715,6 +2003,7 @@ function applyEntity(entity) {
     const ce = el('e-combos');    if (ce) ce.style.display = 'none';
     const de = el('e-desirability'); if (de) de.style.display = 'none';
     const fe = el('e-forbidden');    if (fe) fe.style.display = 'none';
+    const ls = el('lore-section');   if (ls) ls.classList.remove('visible');
     return;
   }
 
@@ -1752,6 +2041,16 @@ function applyEntity(entity) {
 
   el('e-sv').textContent   = entity.shareValue;
   el('e-born').textContent = 'Born: ' + new Date(entity.bornAt).toLocaleString();
+
+  // Lore display
+  const loreSec = el('lore-section');
+  const loreTxt = el('lore-text');
+  if (loreSec && loreTxt && entity.lore) {
+    loreTxt.textContent = entity.lore;
+    loreSec.classList.add('visible');
+  } else if (loreSec) {
+    loreSec.classList.remove('visible');
+  }
 
   // Archetype
   const archEl = el('e-archetype');
@@ -1976,6 +2275,110 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+// ── REVEAL DRAMATURGY ────────────────────────────────────────────────────────
+let _lastDramaStage = null;
+function applyDramaturgy(drama) {
+  const titleEl    = el('drama-title');
+  const subEl      = el('drama-subtitle');
+  const progEl     = el('drama-progress');
+  const progFill   = el('drama-progress-fill');
+  const stage      = el('stage');
+  if (!titleEl || !drama) {
+    if (titleEl) { titleEl.className = ''; titleEl.textContent = ''; }
+    if (subEl) { subEl.className = ''; subEl.textContent = ''; }
+    if (progEl) progEl.className = '';
+    if (stage) { stage.classList.remove('anticipate', 'anticipate-strong'); }
+    _lastDramaStage = null;
+    return;
+  }
+
+  const stg = drama.stage;
+
+  // Stage overlay text
+  if (stg === 'DORMANT') {
+    titleEl.className = '';
+    titleEl.textContent = '';
+    subEl.className = '';
+    subEl.textContent = '';
+    progEl.className = '';
+    stage.classList.remove('anticipate', 'anticipate-strong');
+  } else if (stg === 'FORETELLING') {
+    titleEl.className = 'active';
+    titleEl.textContent = drama.title;
+    subEl.className = 'active';
+    subEl.textContent = drama.subtitle;
+    progEl.className = 'active';
+    progFill.style.width = (drama.intensity * 100) + '%';
+    progFill.style.background = 'var(--accent)';
+    stage.classList.remove('anticipate', 'anticipate-strong');
+  } else if (stg === 'ANTICIPATION') {
+    titleEl.className = 'active';
+    titleEl.textContent = drama.title;
+    subEl.className = 'active';
+    subEl.textContent = drama.subtitle;
+    progEl.className = 'active';
+    progFill.style.width = (drama.intensity * 100) + '%';
+    progFill.style.background = drama.countdownDrama ? '#f87171' : '#fbbf24';
+    // Screen shake during anticipation
+    if (drama.countdownDrama) {
+      stage.classList.remove('anticipate');
+      stage.classList.add('anticipate-strong');
+    } else if (drama.intensity > 0.3) {
+      stage.classList.remove('anticipate-strong');
+      stage.classList.add('anticipate');
+    }
+  } else if (stg === 'BREACH') {
+    titleEl.className = 'breach';
+    titleEl.textContent = drama.title;
+    subEl.className = 'active';
+    subEl.textContent = drama.subtitle;
+    progEl.className = 'active';
+    progFill.style.width = (drama.intensity * 15) + '%';
+    progFill.style.background = '#f87171';
+    stage.classList.remove('anticipate', 'anticipate-strong');
+  } else if (stg === 'COALESCING') {
+    titleEl.className = 'coalesce';
+    titleEl.textContent = drama.title;
+    subEl.className = 'active';
+    subEl.textContent = drama.subtitle;
+    progEl.className = 'active';
+    progFill.style.width = (15 + drama.intensity * 20) + '%';
+    progFill.style.background = '#6d8fff';
+    stage.classList.remove('anticipate', 'anticipate-strong');
+  } else if (stg === 'CRYSTALLIZING') {
+    titleEl.className = 'crystallize';
+    titleEl.textContent = drama.title;
+    subEl.className = 'active';
+    subEl.textContent = drama.subtitle;
+    progEl.className = 'active';
+    progFill.style.width = (35 + drama.intensity * 25) + '%';
+    progFill.style.background = '#34d399';
+    stage.classList.remove('anticipate', 'anticipate-strong');
+  } else if (stg === 'AWAKENING') {
+    titleEl.className = 'awaken';
+    titleEl.textContent = drama.title;
+    subEl.className = 'active';
+    subEl.textContent = drama.subtitle;
+    progEl.className = 'active';
+    progFill.style.width = (60 + drama.intensity * 25) + '%';
+    progFill.style.background = '#fbbf24';
+    stage.classList.remove('anticipate', 'anticipate-strong');
+  } else if (stg === 'PRESENT') {
+    titleEl.className = '';
+    titleEl.textContent = '';
+    subEl.className = '';
+    subEl.textContent = '';
+    progEl.className = 'active';
+    progFill.style.width = '100%';
+    progFill.style.background = '#00e5a0';
+    stage.classList.remove('anticipate', 'anticipate-strong');
+    // Fade out progress bar after full reveal
+    setTimeout(() => { if (progEl) progEl.className = ''; }, 2000);
+  }
+
+  _lastDramaStage = stg;
+}
+
 // ── POLL ─────────────────────────────────────────────────────────────────────
 const sonic    = new SonicEngine();
 let renderer   = null;
@@ -1993,6 +2396,7 @@ async function poll() {
     applyVitals(data.serverVitals, data.signals);
     applyTimer(data);
     applyWorldstate(data.worldstate, data.omens, data.claimable);
+    applyDramaturgy(data.dramaturgy);
     // Chart + live metadata
     const cpuVal = data.serverVitals?.cpuEstimate ?? data.signals?.pressure ?? 0;
     updatePressureChart(cpuVal);
@@ -2026,16 +2430,55 @@ async function poll() {
 }
 
 // ── CLAIM ─────────────────────────────────────────────────────────────────────
+let _pendingChallenge = null;
+
 async function doClaim() {
   const collector = (el('cname').value.trim() || 'anonymous');
   const btn = el('claim-btn');
+
+  // Step 1: If no pending challenge, request one first
+  if (!_pendingChallenge) {
+    btn.disabled = true; btn.textContent = 'VERIFYING…';
+    try {
+      const cRes = await fetch(API_CHALLENGE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const cData = await cRes.json();
+      if (cData.ok && cData.challenge) {
+        _pendingChallenge = cData.challenge;
+        // Show the challenge inline
+        const answer = cData.challenge.a + cData.challenge.b;
+        // Auto-solve: the challenge is proof the client ran through the ceremony
+        // (bots that skip the UI flow won't have the token)
+        await submitClaim(collector, cData.challenge.token, answer);
+      } else {
+        btn.textContent = cData.error || 'NO SPAWN';
+        setTimeout(() => { btn.textContent = 'CLAIM'; btn.disabled = false; }, 3200);
+      }
+    } catch (_e) {
+      btn.textContent = 'ERROR';
+      setTimeout(() => { btn.textContent = 'CLAIM'; btn.disabled = false; }, 3200);
+    }
+    return;
+  }
+
+  // If we somehow have a pending challenge, submit it
+  const answer = _pendingChallenge.a + _pendingChallenge.b;
+  await submitClaim(collector, _pendingChallenge.token, answer);
+}
+
+async function submitClaim(collector, challengeToken, challengeAnswer) {
+  const btn = el('claim-btn');
   btn.disabled = true; btn.textContent = 'CLAIMING…';
+  _pendingChallenge = null;
 
   try {
     const res  = await fetch(API_CLAIM, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ collector })
+      body: JSON.stringify({ collector, challengeToken, challengeAnswer })
     });
     const data = await res.json();
     if (data.ok) {
@@ -2056,6 +2499,9 @@ function showClaimed(entity, collector, claimCount) {
   _lastClaimedCollector = collector;
   _lastClaimedCount     = claimCount || 0;
   _currentClaimCount    = _lastClaimedCount;
+
+  // Add to local collection
+  addToCollection(entity, collector);
   const ov = el('claimed-overlay');
   el('claimed-summary').innerHTML = `
     <div style="font-family:'Space Mono',monospace;font-size:1.5rem;color:#fff;margin-bottom:0.7rem">${entity.name}</div>
@@ -2270,6 +2716,205 @@ function downloadCard() {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
 }
 
+// ── COLLECTION METAGAME ──────────────────────────────────────────────────────
+const COLLECTION_KEY = 'shardborn_collection';
+const ACHIEVEMENT_DEFS = [
+  { id: 'first_claim',   label: 'FIRST BLOOD',     desc: 'Claim your first entity',        color: '#34d399', check: c => c.length >= 1 },
+  { id: 'five_claims',   label: 'COLLECTOR',        desc: 'Claim 5 entities',               color: '#60a5fa', check: c => c.length >= 5 },
+  { id: 'ten_claims',    label: 'HOARDER',          desc: 'Claim 10 entities',              color: '#c084fc', check: c => c.length >= 10 },
+  { id: 'twenty_five',   label: 'OBSESSED',         desc: 'Claim 25 entities',              color: '#fbbf24', check: c => c.length >= 25 },
+  { id: 'rare_find',     label: 'RARE FIND',        desc: 'Claim a Rare or better entity',  color: '#60a5fa', check: c => c.some(e => ['Rare','Epic','Legendary','Mythic'].includes(e.rarity)) },
+  { id: 'epic_find',     label: 'EPIC HUNTER',      desc: 'Claim an Epic entity',           color: '#c084fc', check: c => c.some(e => e.rarity === 'Epic') },
+  { id: 'legendary_find',label: 'LEGEND SEEKER',    desc: 'Claim a Legendary entity',       color: '#fbbf24', check: c => c.some(e => e.rarity === 'Legendary') },
+  { id: 'mythic_find',   label: 'MYTHIC WITNESS',   desc: 'Claim a Mythic entity',          color: '#f87171', check: c => c.some(e => e.rarity === 'Mythic') },
+  { id: 'anomaly_claim', label: 'ANOMALY TOUCHED',  desc: 'Claim an entity with an anomaly',color: '#a855f7', check: c => c.some(e => e.anomaly && e.anomaly !== 'None') },
+  { id: 'forbidden_claim',label:'TABOO BEARER',     desc: 'Claim a forbidden entity',       color: '#f87171', check: c => c.some(e => e.forbidden) },
+  { id: 'all_origins',   label: 'WORLDWALKER',      desc: 'Claim from all 10 origins',      color: '#34d399', check: c => new Set(c.map(e => e.origin)).size >= 10 },
+  { id: 'three_shells',  label: 'SHAPE SHIFTER',    desc: 'Claim 3 different shells',       color: '#818cf8', check: c => new Set(c.map(e => e.shell)).size >= 3 },
+  { id: 'night_claim',   label: 'NIGHT OWL',        desc: 'Claim during midnight hours',    color: '#a78bfa', check: c => c.some(e => { const h = new Date(e.claimedAt).getHours(); return h >= 0 && h < 5; }) },
+];
+
+function loadCollection() {
+  try { return JSON.parse(localStorage.getItem(COLLECTION_KEY) || '[]'); }
+  catch (_e) { return []; }
+}
+function saveCollection(coll) {
+  try { localStorage.setItem(COLLECTION_KEY, JSON.stringify(coll)); } catch(_e) {}
+}
+function addToCollection(entity, collector) {
+  const coll = loadCollection();
+  // Don't add duplicates by entity ID
+  if (coll.some(e => e.entityId === entity.id)) return;
+  coll.push({
+    entityId: entity.id,
+    name: entity.name,
+    origin: entity.origin,
+    shell: entity.shell,
+    core: entity.core,
+    rarity: entity.rarity,
+    anomaly: entity.anomaly,
+    forbidden: entity.forbidden || null,
+    shareValue: entity.shareValue,
+    collector: collector,
+    claimedAt: new Date().toISOString(),
+  });
+  saveCollection(coll);
+  renderCollection();
+}
+
+function renderCollection() {
+  const coll = loadCollection();
+  const toggle = el('collection-toggle');
+  if (toggle) { toggle.style.display = coll.length > 0 ? 'block' : 'none'; }
+  const countEl = el('coll-count');
+  if (countEl) countEl.textContent = coll.length;
+
+  // Stats
+  const totalEl = el('cs-total');
+  const uniqueEl = el('cs-unique');
+  const rarestEl = el('cs-rarest');
+  if (totalEl) totalEl.textContent = coll.length;
+  if (uniqueEl) uniqueEl.textContent = new Set(coll.map(e => e.origin)).size;
+  const rarityRank = ['Common','Uncommon','Rare','Epic','Legendary','Mythic'];
+  const rarest = coll.reduce((best, e) => {
+    const r = rarityRank.indexOf(e.rarity);
+    return r > best.rank ? { rank: r, label: e.rarity } : best;
+  }, { rank: -1, label: '—' });
+  if (rarestEl) rarestEl.textContent = rarest.label;
+
+  // Achievements
+  const achvGrid = el('achv-grid');
+  if (achvGrid) {
+    achvGrid.innerHTML = ACHIEVEMENT_DEFS.map(a => {
+      const unlocked = a.check(coll);
+      return `<span class="achv-badge ${unlocked ? 'unlocked' : 'locked'}" style="${unlocked ? `color:${a.color};border-color:${a.color}60;background:${a.color}12` : ''}" title="${a.desc}">${a.label}</span>`;
+    }).join('');
+  }
+
+  // Rarity breakdown
+  const breakEl = el('coll-rarity-breakdown');
+  if (breakEl) {
+    const counts = {};
+    coll.forEach(e => { counts[e.rarity] = (counts[e.rarity] || 0) + 1; });
+    breakEl.innerHTML = rarityRank.map(r => {
+      const n = counts[r] || 0;
+      if (n === 0) return '';
+      const rc = RARITY_COLOR[r] || '#888';
+      return `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.6rem"><span style="color:${rc};font-family:'Space Mono',monospace">${r.toUpperCase()}</span><span style="color:var(--text);font-family:'Space Mono',monospace">${n}</span></div>`;
+    }).join('');
+  }
+
+  // Recent claims list (most recent first, max 15)
+  const listEl = el('coll-list');
+  if (listEl) {
+    const recent = coll.slice(-15).reverse();
+    listEl.innerHTML = recent.map(e => {
+      const rc = RARITY_COLOR[e.rarity] || '#888';
+      const ts = new Date(e.claimedAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return `<div class="coll-entity-row"><span class="coll-entity-name">${escapeHtml(e.name)}</span><span class="coll-entity-rarity" style="color:${rc}">${e.rarity}</span><span class="coll-entity-time">${ts}</span></div>`;
+    }).join('');
+  }
+}
+
+function toggleCollection() {
+  const panel = el('collection-panel');
+  if (panel) panel.classList.toggle('open');
+}
+
+// ── LEADERBOARD ──────────────────────────────────────────────────────────────
+let _leaderboardOpen = false;
+let _leaderboardTimer = null;
+
+function toggleLeaderboard() {
+  const panel = el('leaderboard-panel');
+  _leaderboardOpen = !_leaderboardOpen;
+  if (panel) panel.classList.toggle('open', _leaderboardOpen);
+  if (_leaderboardOpen) {
+    fetchLeaderboard();
+    _leaderboardTimer = setInterval(fetchLeaderboard, 15000);
+  } else if (_leaderboardTimer) {
+    clearInterval(_leaderboardTimer);
+    _leaderboardTimer = null;
+  }
+}
+
+async function fetchLeaderboard() {
+  try {
+    const res = await fetch('/api/leaderboard', { cache: 'no-store' });
+    const data = await res.json();
+    renderLeaderboard(data);
+  } catch (_e) {
+    const sumEl = el('lb-summary');
+    if (sumEl) sumEl.textContent = 'Unable to load leaderboard';
+  }
+}
+
+function renderLeaderboard(data) {
+  const sumEl = el('lb-summary');
+  const listEl = el('lb-list');
+  if (!data || !data.leaderboard) return;
+
+  if (sumEl) {
+    sumEl.textContent = `${data.totalCollectors} collectors \u00b7 ${data.totalClaims} total claims`;
+  }
+  if (listEl) {
+    listEl.innerHTML = data.leaderboard.map((entry, i) => {
+      const rankClass = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+      const rc = RARITY_COLOR[entry.bestRarity] || '#888';
+      return `<div class="lb-row">
+        <span class="lb-rank ${rankClass}">#${i + 1}</span>
+        <span class="lb-name" title="${escapeHtml(entry.collector)}">${escapeHtml(entry.collector)}</span>
+        <span class="lb-score" style="color:${rc}">${entry.shareScore}</span>
+        <span class="lb-claims">${entry.claims} claim${entry.claims !== 1 ? 's' : ''}</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+// ── HISTORY PANEL ─────────────────────────────────────────────────────────────
+let _historyOpen = false;
+
+function toggleHistory() {
+  const panel = el('history-panel');
+  _historyOpen = !_historyOpen;
+  if (panel) panel.classList.toggle('open', _historyOpen);
+  if (_historyOpen) fetchHistory();
+}
+
+async function fetchHistory() {
+  try {
+    const res = await fetch(API_HISTORY + '?count=20', { cache: 'no-store' });
+    const data = await res.json();
+    renderHistory(data);
+  } catch (_e) {
+    const listEl = el('hist-list');
+    if (listEl) listEl.textContent = 'Unable to load history';
+  }
+}
+
+function renderHistory(data) {
+  const listEl = el('hist-list');
+  if (!listEl || !data || !data.history) return;
+
+  listEl.innerHTML = data.history.map((h, i) => {
+    const e = h.entity;
+    const rc = RARITY_COLOR[e.rarity] || '#888';
+    const claimers = h.claimedBy.length > 0
+      ? h.claimedBy.map(c => escapeHtml(c)).join(', ')
+      : '<span style="color:var(--dim)">unclaimed</span>';
+    const loreId = 'hist-lore-' + i;
+    return `<div class="hist-entry">
+      <div class="hist-entity-row">
+        <span class="hist-entity-name">${escapeHtml(e.name)}</span>
+        <span class="hist-entity-rarity" style="color:${rc};border:1px solid ${rc}40;background:${rc}10">${e.rarity}</span>
+      </div>
+      <div class="hist-claims">${e.anomaly !== 'None' ? '⚡ ' + escapeHtml(e.anomaly) + ' · ' : ''}${escapeHtml(e.temperament)} · Slot ${e.slot} · ${h.claimCount} claim${h.claimCount !== 1 ? 's' : ''}: ${claimers}</div>
+      <button class="hist-toggle-lore" onclick="document.getElementById('${loreId}').classList.toggle('expanded')">▸ lore</button>
+      <div class="hist-entity-lore" id="${loreId}">${escapeHtml(e.lore || '')}</div>
+    </div>`;
+  }).join('');
+}
+
 // ── SOUND CONTROLS ───────────────────────────────────────────────────────────
 function toggleSound() {
   _soundMuted = !_soundMuted;
@@ -2309,6 +2954,9 @@ el('enter-btn').addEventListener('click', async () => {
   renderer = new SpawnRenderer(canvas);
   renderer.start();
 
+  // Initialize collection panel
+  renderCollection();
+
   await poll();
   setInterval(poll, POLL_MS);
 });
@@ -2318,6 +2966,9 @@ setInterval(() => { if (_liveState) applyTimer(_liveState); }, 280);
 
 el('claim-btn').addEventListener('click', doClaim);
 el('cname').addEventListener('keydown', e => { if (e.key === 'Enter') doClaim(); });
+el('collection-toggle').addEventListener('click', toggleCollection);
+el('leaderboard-toggle').addEventListener('click', toggleLeaderboard);
+el('history-toggle').addEventListener('click', toggleHistory);
 el('dismiss').addEventListener('click', () => {
   el('claimed-overlay').classList.remove('on');
   const btn = el('claim-btn');

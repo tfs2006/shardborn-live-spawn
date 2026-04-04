@@ -9,11 +9,11 @@ module.exports = async function handler(req, res) {
 
   try {
     const headers = { "Content-Type": "application/json" };
-    // Forward client IP for rate limiting and challenge verification
+    // Forward client IP so the oracle can bind the challenge
     const clientIp = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "";
     if (clientIp) headers["X-Forwarded-For"] = clientIp;
 
-    const upstream = await fetch(`${base}/claim`, {
+    const upstream = await fetch(`${base}/challenge`, {
       method: "POST",
       headers,
       body: JSON.stringify(req.body || {})
@@ -24,6 +24,6 @@ module.exports = async function handler(req, res) {
     res.setHeader("Cache-Control", "no-store, max-age=0");
     res.status(upstream.status).json(payload);
   } catch (error) {
-    res.status(502).json({ ok: false, error: "oracle-claim-unreachable", details: String(error.message || error) });
+    res.status(502).json({ ok: false, error: "oracle-challenge-unreachable", details: String(error.message || error) });
   }
 };
