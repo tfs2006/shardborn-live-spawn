@@ -45,6 +45,192 @@ RARITY_WEIGHTS = {"Common": 1, "Uncommon": 2, "Rare": 3, "Epic": 4, "Legendary":
 
 CLAIMS = {}
 
+# ── Worldstate Engine ─────────────────────────────────────────────────────────
+# The ecology is a multi-layer simulation governing environmental conditions.
+# Phases cycle over time, each affecting rarity, anomaly chance, and creature
+# behavior. Migration cycles, temporal rhythms, and hidden modifiers create
+# an ecosystem that rewards observation and defies simple prediction.
+
+WORLD_PHASES = [
+    {"name": "CALM",     "rarityBoost": 0, "anomalyBoost": 0.0,  "color": "#4e5570", "omenStyle": "whisper"},
+    {"name": "STIRRING", "rarityBoost": 0, "anomalyBoost": 0.05, "color": "#6d8fff", "omenStyle": "signal"},
+    {"name": "SURGE",    "rarityBoost": 1, "anomalyBoost": 0.10, "color": "#34d399", "omenStyle": "tremor"},
+    {"name": "STORM",    "rarityBoost": 2, "anomalyBoost": 0.20, "color": "#fbbf24", "omenStyle": "roar"},
+    {"name": "ECLIPSE",  "rarityBoost": 3, "anomalyBoost": 0.35, "color": "#f87171", "omenStyle": "silence"},
+]
+
+FAMILY_MIGRATIONS = [
+    ["Ash", "Iron", "Storm"],
+    ["Tide", "Glass", "Aurora"],
+    ["Bloom", "Dusk", "Void"],
+    ["Static", "Storm", "Glass"],
+    ["Void", "Ash", "Tide"],
+]
+
+FORBIDDEN_COMBOS = [
+    {"traits": {"origin": "Void", "core": "Prism", "eyes": "Halo"},              "label": "LIGHT IN VOID",    "bonus": 5},
+    {"traits": {"origin": "Bloom", "core": "Rot"},                               "label": "LIFE-DEATH PARADOX", "bonus": 3},
+    {"traits": {"origin": "Glass", "core": "Singularity"},                       "label": "TRANSPARENT ABYSS", "bonus": 4},
+    {"traits": {"origin": "Aurora", "core": "Rot", "mark": "Corrupt"},           "label": "FALLEN DAWN",      "bonus": 4},
+    {"traits": {"origin": "Iron", "eyes": "Void", "anomaly": "Impossible"},      "label": "HOLLOW FORGE",     "bonus": 5},
+    {"traits": {"origin": "Storm", "core": "Frost", "temperament": "Dormant"},   "label": "FROZEN TEMPEST",   "bonus": 3},
+    {"traits": {"origin": "Tide", "core": "Ember", "mark": "Solar"},             "label": "BOILING SEA",      "bonus": 3},
+    {"traits": {"origin": "Dusk", "eyes": "Oracle", "anomaly": "Chronal"},       "label": "TWILIGHT PROPHET", "bonus": 4},
+]
+
+DESIRABILITY_APPEAL = {
+    ("Bloomform", "Halo"): 15, ("Idol", "Oracle"): 15, ("Cocoon", "Closed"): 10,
+    ("Beast", "Cluster"): 8,  ("Spiral", "Single"): 6,  ("Prism", "Crown"): 12,
+    ("Serpent", "Void"): 10,  ("Swarm", "Halo"): 10,   ("Monolith", "Oracle"): 12,
+    ("Cocoon", "Oracle"): 8,  ("Lattice", "Mirrored"): 7, ("Beast", "Single"): 5,
+}
+
+DESIRABILITY_GRACE = {
+    ("Hovering", "Patient"): 20,    ("Spiraling", "Prophetic"): 20,
+    ("Phasing", "Mimic"): 18,       ("Pulsing", "Blessed"): 15,
+    ("Crawling", "Dormant"): 15,    ("Leaping", "Chaotic"): 12,
+    ("Burrowing", "Territorial"): 15,("Threading", "Watchful"): 12,
+    ("Orbiting", "Blessed"): 14,    ("Cracking", "Jealous"): 10,
+}
+
+
+def compute_worldstate(ts_ms, slot):
+    """Multi-layer ecological state. Phase, migration, and temporal rhythm."""
+    hour = int((ts_ms / 3_600_000) % 24)
+    day = int((ts_ms / 86_400_000) % 7)
+
+    phase_cycle = int((slot // 5) % len(WORLD_PHASES))
+    phase = WORLD_PHASES[phase_cycle]
+
+    # Eclipse override — rare, triggered by specific hash patterns
+    eclipse_hash = hash_hex(f"eclipse:{slot // 5}")
+    if eclipse_hash[0:2] == "ff" and eclipse_hash[4:6] > "e0":
+        phase = WORLD_PHASES[4]
+
+    migration_idx = int((slot // 20) % len(FAMILY_MIGRATIONS))
+    migrating = FAMILY_MIGRATIONS[migration_idx]
+
+    if 0 <= hour < 6:
+        time_label, time_affinity = "DEEP NIGHT", ["Void", "Dusk"]
+    elif 6 <= hour < 12:
+        time_label, time_affinity = "DAWN CHORUS", ["Aurora", "Bloom"]
+    elif 12 <= hour < 18:
+        time_label, time_affinity = "FORGE HOURS", ["Iron", "Storm", "Static"]
+    else:
+        time_label, time_affinity = "DUSK TIDE", ["Tide", "Ash", "Glass"]
+
+    return {
+        "phase": phase["name"],
+        "phaseColor": phase["color"],
+        "rarityBoost": phase["rarityBoost"],
+        "anomalyBoost": phase["anomalyBoost"],
+        "omenStyle": phase["omenStyle"],
+        "migratingOrigins": migrating,
+        "timeLabel": time_label,
+        "timeAffinity": time_affinity,
+        "hour": hour,
+        "day": day,
+        "cycleInPhase": int(slot % 5),
+    }
+
+
+def compute_desirability(entity, nums, worldstate):
+    """Multi-axis desirability engine. Hidden model for why creatures become coveted."""
+    rw = {"Common": 1, "Uncommon": 2, "Rare": 3, "Epic": 5, "Legendary": 8, "Mythic": 13}
+
+    appeal = 28 + DESIRABILITY_APPEAL.get((entity["shell"], entity["eyes"]), 0)
+    if entity["temperament"] in ("Blessed", "Prophetic", "Patient"):
+        appeal += 12
+    appeal += nums[8] % 20
+    appeal = clamp(int(appeal), 0, 100)
+
+    eeriness = 8
+    if entity["anomaly"] != "None":
+        eeriness += 22
+    if entity["anomaly"] in ("Impossible", "Singular", "Recursive"):
+        eeriness += 25
+    if entity["origin"] in ("Void", "Dusk") and entity["core"] in ("Rot", "Singularity"):
+        eeriness += 18
+    if entity["eyes"] in ("Void", "Blind"):
+        eeriness += 8
+    eeriness = clamp(int(eeriness), 0, 100)
+
+    prestige = rw.get(entity["rarity"], 1) * 7
+    if worldstate["phase"] in ("STORM", "ECLIPSE"):
+        prestige += 15
+    if entity["anomaly"] == "Singular":
+        prestige += 20
+    prestige = clamp(int(prestige), 0, 100)
+
+    grace = 22 + DESIRABILITY_GRACE.get((entity["motion"], entity["temperament"]), 0)
+    grace += nums[9] % 18
+    grace = clamp(int(grace), 0, 100)
+
+    iconicity = clamp(int(prestige * 0.35 + appeal * 0.30 + eeriness * 0.20 + grace * 0.15 + 8), 0, 100)
+    overall = clamp(int(appeal * 0.25 + eeriness * 0.15 + prestige * 0.30 + grace * 0.15 + iconicity * 0.15), 0, 100)
+
+    return {
+        "appeal": appeal, "eeriness": eeriness, "prestige": prestige,
+        "grace": grace, "iconicity": iconicity, "overall": overall,
+    }
+
+
+def generate_omens(slot, worldstate):
+    """Pre-spawn omens: 1-3 signals that hint at the incoming entity. ~20% misleading."""
+    next_slot = slot + 1
+    next_pressure = clamp(int(68 + 19 * math.sin(next_slot / 5.0) + 8 * math.sin(next_slot / 13.0)), 22, 98)
+    next_watchers = clamp(int(170 + 80 * (1 + math.sin(next_slot / 4.1)) + (next_slot % 57)), 96, 999)
+    next_streak = 7 + (next_slot % 21)
+    next_source = f"slot:{next_slot}|pressure:{next_pressure}|watchers:{next_watchers}|streak:{next_streak}"
+    next_hx = hash_hex(next_source)
+    next_nums = [int(next_hx[i:i + 2], 16) for i in range(0, min(len(next_hx), 64), 2)]
+
+    next_origin = pick(TRAITS["origin"], next_nums[0])
+    next_shell = pick(TRAITS["shell"], next_nums[1])
+    next_temp = pick(TRAITS["temperament"], next_nums[7])
+    next_anomaly = pick(TRAITS["anomaly"], next_nums[6])
+
+    omen_hash = hash_hex(f"omen:{slot}")
+    omen_nums = [int(omen_hash[i:i + 2], 16) for i in range(0, 32, 2)]
+    count = 1 + (omen_nums[0] % 3)
+
+    omens = []
+    for i in range(count):
+        is_misleading = omen_nums[i + 4] < 51
+        if is_misleading:
+            fake_origin = TRAITS["origin"][omen_nums[i + 6] % len(TRAITS["origin"])]
+            fake_shell = TRAITS["shell"][omen_nums[i + 7] % len(TRAITS["shell"])]
+            texts = [
+                f"Faint echoes of {fake_origin} resonance detected",
+                f"A {fake_shell.lower()}-class shadow flickers in substrate",
+                f"The shard whispers of {fake_origin} — signal uncertain",
+            ]
+            omens.append({"text": texts[omen_nums[i + 2] % len(texts)], "type": "whisper", "confidence": "low"})
+        else:
+            texts = [
+                f"The substrate trembles with {next_origin} resonance",
+                f"A {next_shell.lower()}-class form coalesces in entropy",
+                f"Oracle sensors detect {next_temp.lower()} energy patterns",
+                f"{worldstate['phase']} phase amplifies the incoming signal",
+            ]
+            if next_anomaly != "None":
+                texts.append(f"Anomalous signature — {next_anomaly.lower()} resonance detected")
+            omens.append({
+                "text": texts[omen_nums[i + 2] % len(texts)],
+                "type": worldstate["omenStyle"],
+                "confidence": "medium" if omen_nums[i + 3] > 128 else "high",
+            })
+
+    return omens
+
+
+def detect_forbidden(entity_traits):
+    """Check if entity has a forbidden/taboo trait combination."""
+    for combo in FORBIDDEN_COMBOS:
+        if all(entity_traits.get(k) == v for k, v in combo["traits"].items()):
+            return {"forbidden": True, "label": combo["label"], "bonus": combo["bonus"]}
+    return {"forbidden": False, "label": None, "bonus": 0}
+
 
 # ── Server organism vitals ────────────────────────────────────────────────────
 
@@ -223,11 +409,11 @@ def resonance_label(pressure, n):
     return labels[(pressure // 10 + n) % len(labels)]
 
 
-def derive_rarity(hash_str, anomaly):
+def derive_rarity(hash_str, anomaly, extra_score=0):
     a = int(hash_str[0:2], 16)
     b = int(hash_str[2:4], 16)
     c = int(hash_str[4:6], 16)
-    score = 0
+    score = extra_score
     if a > 210:
         score += 2
     if b % 11 == 0:
@@ -255,15 +441,23 @@ def derive_rarity(hash_str, anomaly):
     return "Common"
 
 
-def build_slot_entity(slot, pressure, watchers, streak):
+def build_slot_entity(slot, pressure, watchers, streak, worldstate=None):
+    if worldstate is None:
+        worldstate = {"phase": "CALM", "rarityBoost": 0, "anomalyBoost": 0,
+                      "migratingOrigins": [], "timeAffinity": [], "omenStyle": "whisper"}
     source = f"slot:{slot}|pressure:{pressure}|watchers:{watchers}|streak:{streak}"
     hx = hash_hex(source)
     nums = [int(hx[i: i + 2], 16) for i in range(0, min(len(hx), 64), 2)]
     while len(nums) < 32:
         nums.extend(nums[:16])
 
+    # Anomaly selection — worldstate can boost anomaly chance
     anomaly_base = pick(TRAITS["anomaly"], nums[6])
+    anomaly_roll = (nums[10] / 255.0) < worldstate["anomalyBoost"]
+    if anomaly_roll and anomaly_base == "None":
+        anomaly_base = pick(TRAITS["anomaly"][1:], nums[11])
     anomaly = "Singular" if (hx[10:14] == "0fff" or hx[0:6] == "ffffff") else anomaly_base
+
     origin      = pick(TRAITS["origin"],      nums[0])
     shell       = pick(TRAITS["shell"],       nums[1])
     core        = pick(TRAITS["core"],        nums[2])
@@ -271,9 +465,24 @@ def build_slot_entity(slot, pressure, watchers, streak):
     eyes        = pick(TRAITS["eyes"],        nums[4])
     mark        = pick(TRAITS["mark"],        nums[5])
     temperament = pick(TRAITS["temperament"], nums[7])
-    rarity      = derive_rarity(hx, anomaly)
+
+    # Forbidden state detection
+    partial = {"origin": origin, "core": core, "eyes": eyes, "mark": mark,
+               "anomaly": anomaly, "temperament": temperament}
+    forbidden = detect_forbidden(partial)
+
+    # Multi-layer rarity synthesis
+    extra = worldstate["rarityBoost"] + forbidden["bonus"]
+    if origin in worldstate.get("migratingOrigins", []):
+        extra += 1
+    if origin in worldstate.get("timeAffinity", []):
+        extra += 1
+    rarity = derive_rarity(hx, anomaly, extra)
+
     share_value = (RARITY_WEIGHTS[rarity] * 100) + (35 if anomaly != "None" else 0) + (nums[3] % 40)
-    born        = datetime.fromtimestamp(slot_start_ms(slot) / 1000, tz=timezone.utc).isoformat()
+    if forbidden["forbidden"]:
+        share_value += 200
+    born = datetime.fromtimestamp(slot_start_ms(slot) / 1000, tz=timezone.utc).isoformat()
 
     entity = {
         "id":          f"{origin[:3].upper()}-{hx[:8].upper()}",
@@ -297,6 +506,9 @@ def build_slot_entity(slot, pressure, watchers, streak):
         "slot":        slot,
     }
     entity["sonicFingerprint"] = derive_sonic_fingerprint(entity, nums)
+    entity["desirability"] = compute_desirability(entity, nums, worldstate)
+    if forbidden["forbidden"]:
+        entity["forbidden"] = forbidden["label"]
     return entity
 
 
@@ -310,10 +522,15 @@ def compute_live_state(ts_ms):
     watchers = clamp(int(170 + 80 * (1 + math.sin(slot / 4.1)) + (slot % 57)), 96, 999)
     streak   = 7 + (slot % 21)
 
+    worldstate = compute_worldstate(ts_ms, slot)
+
     claimable     = cycle_phase <= CLAIM_WINDOW_MS
-    entity        = build_slot_entity(slot, pressure, watchers, streak) if claimable else None
+    entity        = build_slot_entity(slot, pressure, watchers, streak, worldstate) if claimable else None
     next_spawn_at = slot_start + CYCLE_MS
     claim_ends_at = slot_start + CLAIM_WINDOW_MS if claimable else None
+
+    # Omens: generated during wait phase to hint at the next spawn
+    omens = generate_omens(slot, worldstate) if not claimable else []
 
     return {
         "serverTime":    ts_ms,
@@ -323,6 +540,8 @@ def compute_live_state(ts_ms):
         "claimEndsAt":   claim_ends_at,
         "claimable":     claimable,
         "current":       entity,
+        "worldstate":    worldstate,
+        "omens":         omens,
         "signals": {
             "pressure":  pressure,
             "watchers":  watchers,

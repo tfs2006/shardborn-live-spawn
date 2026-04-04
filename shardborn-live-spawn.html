@@ -336,6 +336,38 @@
     .sfr { font-family:'Space Mono',monospace; font-size:0.54rem; }
     .sft { font-size:0.52rem; color:var(--dim); }
 
+    /* ── ECOLOGY & OMENS ──────────────────────────────────────── */
+    .phase-pill {
+      padding: 0.18rem 0.55rem; font-family: 'Space Mono', monospace;
+      font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase;
+      border: 1px solid currentColor; border-radius: 2px; opacity: 0.85;
+    }
+    .omen-item {
+      padding: 0.35rem 0; border-bottom: 1px solid var(--border);
+      font-size: 0.65rem; color: var(--dim); line-height: 1.6;
+      animation: omenfade 1.2s ease;
+    }
+    @keyframes omenfade { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+    .omen-item .omen-type {
+      font-family: 'Space Mono', monospace; font-size: 0.52rem;
+      letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 0.15rem;
+    }
+    .omen-item .omen-text { color: var(--text); font-style: italic; }
+    .desirability-grid { display: grid; gap: 0.35rem; }
+    .d-row { display: flex; align-items: center; gap: 0.4rem; }
+    .d-label { font-size: 0.56rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; width: 52px; flex-shrink: 0; }
+    .d-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.045); border-radius: 2px; overflow: hidden; }
+    .d-bar-f { height: 100%; border-radius: 2px; transition: width 1.2s ease; }
+    .d-val { font-family: 'Space Mono', monospace; font-size: 0.62rem; color: var(--text); width: 24px; text-align: right; }
+    .forbidden-badge {
+      display: inline-block; padding: 0.18rem 0.7rem;
+      font-family: 'Space Mono', monospace; font-size: 0.56rem;
+      letter-spacing: 0.14em; border: 1px solid #f8717160; border-radius: 2px;
+      color: #f87171; background: rgba(248,113,113,0.06); text-transform: uppercase;
+      animation: blink 1.8s ease-in-out infinite;
+    }
+    .eco-val { font-size: 0.62rem; color: var(--text); font-family: 'Space Mono', monospace; }
+
     /* ── RESPONSIVE ────────────────────────────────────────────── */
     @media (max-width: 860px) {
       body { overflow-y: auto; }
@@ -377,6 +409,7 @@
       <span id="o-txt">CONNECTING</span>
     </div>
     <div class="spawn-badge" id="spawn-badge">SPAWN WINDOW OPEN</div>
+    <span class="phase-pill" id="phase-pill" style="display:none"></span>
     <div class="hdr-space"></div>
     <button id="snd-btn" title="Mute sound" onclick="toggleSound()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:1.1rem;padding:0 0.5rem;line-height:1;transition:color 0.3s">♪</button>
     <div id="hdr-timer"><span class="lbl">NEXT IN</span><span id="t-val">--:--</span></div>
@@ -420,6 +453,20 @@
     </div>
     <div id="resonance">—</div>
     <div id="freq-tag"></div>
+
+    <div class="p-title" style="margin-top:0.65rem">Ecology</div>
+    <div class="vrow">
+      <div class="vlabel"><span>Phase</span><span class="eco-val" id="eco-phase">--</span></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Time</span><span class="eco-val" id="eco-time">--</span></div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel"><span>Migration</span><span class="eco-val" id="eco-migration" style="font-size:0.56rem">--</span></div>
+    </div>
+
+    <div class="p-title" style="margin-top:0.65rem">Omens</div>
+    <div id="omen-feed"><span style="font-size:0.62rem;color:var(--dim)">Silence\u2026</span></div>
 
     <div class="p-title" style="margin-top:0.65rem">Cycle State</div>
     <div class="vrow">
@@ -485,6 +532,17 @@
       </div>
       <div id="e-archetype" style="display:none"></div>
       <div id="e-combos" style="display:none;flex-wrap:wrap;gap:0.28rem"></div>
+      <div id="e-forbidden" style="display:none"></div>
+      <div id="e-desirability" style="display:none">
+        <div class="p-title" style="margin-top:0.1rem">Desirability</div>
+        <div class="desirability-grid">
+          <div class="d-row"><span class="d-label">Appeal</span><div class="d-bar"><div class="d-bar-f" id="d-appeal" style="width:0%;background:#34d399"></div></div><span class="d-val" id="dv-appeal">0</span></div>
+          <div class="d-row"><span class="d-label">Eerie</span><div class="d-bar"><div class="d-bar-f" id="d-eeriness" style="width:0%;background:#a855f7"></div></div><span class="d-val" id="dv-eeriness">0</span></div>
+          <div class="d-row"><span class="d-label">Prestige</span><div class="d-bar"><div class="d-bar-f" id="d-prestige" style="width:0%;background:#fbbf24"></div></div><span class="d-val" id="dv-prestige">0</span></div>
+          <div class="d-row"><span class="d-label">Grace</span><div class="d-bar"><div class="d-bar-f" id="d-grace" style="width:0%;background:#60a5fa"></div></div><span class="d-val" id="dv-grace">0</span></div>
+          <div class="d-row"><span class="d-label">Iconic</span><div class="d-bar"><div class="d-bar-f" id="d-iconicity" style="width:0%;background:#f472b6"></div></div><span class="d-val" id="dv-iconicity">0</span></div>
+        </div>
+      </div>
       <div class="p-title" style="margin-top:0.1rem">Sonic Fingerprint</div>
       <div>
         <div id="s-hz">—</div>
@@ -1581,6 +1639,11 @@ function updateSpawnFeed(slot, entity) {
 let _liveState  = null;
 let _lastSlot   = null;
 let _lastSonSlot= null;
+let _currentClaimCount    = 0;
+let _lastClaimedEntity    = null;
+let _lastClaimedCollector = null;
+let _lastClaimedCount     = 0;
+let _lastClaimedSf        = null;
 
 // ── UTILITIES ────────────────────────────────────────────────────────────────
 function mmss(ms) {
@@ -1650,6 +1713,8 @@ function applyEntity(entity) {
     el('freq-tag').textContent = '';
     const ae = el('e-archetype'); if (ae) ae.style.display = 'none';
     const ce = el('e-combos');    if (ce) ce.style.display = 'none';
+    const de = el('e-desirability'); if (de) de.style.display = 'none';
+    const fe = el('e-forbidden');    if (fe) fe.style.display = 'none';
     return;
   }
 
@@ -1708,6 +1773,31 @@ function applyEntity(entity) {
       combosEl.style.display = 'none';
       combosEl.innerHTML = '';
     }
+  }
+
+  // Desirability scores
+  const desEl = el('e-desirability');
+  if (desEl && entity.desirability) {
+    desEl.style.display = 'block';
+    const d = entity.desirability;
+    ['appeal', 'eeriness', 'prestige', 'grace', 'iconicity'].forEach(key => {
+      const bar = el('d-' + key);
+      const val = el('dv-' + key);
+      if (bar) bar.style.width = d[key] + '%';
+      if (val) val.textContent = d[key];
+    });
+  } else if (desEl) {
+    desEl.style.display = 'none';
+  }
+
+  // Forbidden state
+  const forbEl = el('e-forbidden');
+  if (forbEl && entity.forbidden) {
+    forbEl.style.display = 'inline-block';
+    forbEl.className = 'forbidden-badge';
+    forbEl.textContent = '\u26a0 ' + entity.forbidden;
+  } else if (forbEl) {
+    forbEl.style.display = 'none';
   }
 
   const ccEl = el('e-claimcount');
@@ -1849,6 +1939,43 @@ function updatePressureChart(val) {
   ctx.fillText(lv + '%', 3, 11);
 }
 
+// ── WORLDSTATE + OMENS ───────────────────────────────────────────────────────
+function applyWorldstate(ws, omens, claimable) {
+  if (ws) {
+    const phasePill = el('phase-pill');
+    if (phasePill) {
+      phasePill.style.display = 'inline-block';
+      phasePill.textContent = ws.phase;
+      phasePill.style.color = ws.phaseColor;
+      phasePill.style.borderColor = (ws.phaseColor || '#6d8fff') + '60';
+    }
+    const ecoPhase = el('eco-phase');
+    if (ecoPhase) { ecoPhase.textContent = ws.phase; ecoPhase.style.color = ws.phaseColor; }
+    const ecoTime = el('eco-time');
+    if (ecoTime) ecoTime.textContent = ws.timeLabel || '--';
+    const ecoMig = el('eco-migration');
+    if (ecoMig) ecoMig.textContent = ws.migratingOrigins ? ws.migratingOrigins.join(' \u00b7 ') : '--';
+  }
+  const omenFeed = el('omen-feed');
+  if (omenFeed) {
+    if (omens && omens.length > 0 && !claimable) {
+      const pc = ws?.phaseColor || '#6d8fff';
+      omenFeed.innerHTML = omens.map(o =>
+        `<div class="omen-item"><div class="omen-type" style="color:${pc}">${o.type} \u00b7 ${o.confidence}</div><div class="omen-text">${escapeHtml(o.text)}</div></div>`
+      ).join('');
+    } else if (claimable) {
+      omenFeed.innerHTML = '<span style="font-size:0.62rem;color:var(--claim)">Entity materialized</span>';
+    } else if (!omens || omens.length === 0) {
+      omenFeed.innerHTML = '<span style="font-size:0.62rem;color:var(--dim)">Silence\u2026</span>';
+    }
+  }
+}
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
 // ── POLL ─────────────────────────────────────────────────────────────────────
 const sonic    = new SonicEngine();
 let renderer   = null;
@@ -1865,6 +1992,7 @@ async function poll() {
     _liveState = data;
     applyVitals(data.serverVitals, data.signals);
     applyTimer(data);
+    applyWorldstate(data.worldstate, data.omens, data.claimable);
     // Chart + live metadata
     const cpuVal = data.serverVitals?.cpuEstimate ?? data.signals?.pressure ?? 0;
     updatePressureChart(cpuVal);
@@ -2143,7 +2271,6 @@ function downloadCard() {
 }
 
 // ── SOUND CONTROLS ───────────────────────────────────────────────────────────
-let _lastClaimedSf = null;
 function toggleSound() {
   _soundMuted = !_soundMuted;
   const btn = el('snd-btn');
