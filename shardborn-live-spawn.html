@@ -295,6 +295,16 @@
       transition: all 0.3s;
     }
     #dismiss:hover { border-color: rgba(255,255,255,0.35); color: var(--text); }
+    .dl-btn {
+      display: block; width: 100%; max-width: 340px; margin-top: 1.1rem;
+      padding: 0.6rem 1.2rem; background: rgba(0,229,160,0.07);
+      border: 1px solid rgba(0,229,160,0.28); color: var(--claim);
+      font-family: 'Space Mono', monospace; font-size: 0.65rem;
+      letter-spacing: 0.2em; cursor: pointer; transition: all 0.3s;
+    }
+    .dl-btn:hover { background: rgba(0,229,160,0.16); box-shadow: 0 0 24px rgba(0,229,160,0.15); }
+    .claim-count-line { font-size: 0.63rem; color: var(--dim); margin-top: 0.3rem; font-style: italic; }
+    .claim-count-line strong { color: var(--claim); }
 
     /* ── SCROLLBAR ─────────────────────────────────────────────── */
     ::-webkit-scrollbar { width: 3px; }
@@ -456,6 +466,7 @@
         <span class="svv" id="e-sv">—</span>
       </div>
       <div id="e-born">—</div>
+      <div class="claim-count-line" id="e-claimcount"></div>
     </div>
   </aside>
 
@@ -465,6 +476,7 @@
 <div id="claimed-overlay">
   <h2>CLAIMED</h2>
   <div id="claimed-summary"></div>
+  <button class="dl-btn" id="dl-btn" onclick="downloadCard()">⬇ DOWNLOAD ENTITY CARD</button>
   <button id="dismiss">DISMISS</button>
 </div>
 
@@ -502,6 +514,20 @@ const CORE_COLOR = {
 };
 
 // ── ENTRY STAR FIELD ─────────────────────────────────────────────────────────
+// ── ORGANIC OSCILLATOR ────────────────────────────────────────────
+// Golden ratio (φ=1.618), Euler's e (2.718), π (3.141) as sub-harmonics.
+// These irrational ratios guarantee the waveform never exactly repeats,
+// giving each creature genuinely living, aperiodic motion.
+function organic(t, seed, amp) {
+  if (amp === undefined) amp = 1;
+  return amp * (
+    Math.sin(t * 1.000 + seed)         * 0.500  +  // fundamental
+    Math.sin(t * 1.618 + seed * 2.300) * 0.250  +  // golden ratio φ
+    Math.sin(t * 2.718 + seed * 0.700) * 0.125  +  // Euler's number e
+    Math.sin(t * 3.141 + seed * 1.400) * 0.0625    // π
+  );
+}
+
 (function(){
   const ec = document.getElementById('entry-stars');
   if (!ec) return;
@@ -750,9 +776,20 @@ class SpawnRenderer {
     this.ent = null;
     this.vit = null;
     this.pts = [];         // particles
+    this.mouseX = window.innerWidth  / 2;
+    this.mouseY = window.innerHeight / 2;
+    this.emergence = { active: false, progress: 0 };
+    this.heartbeatIntensity = 0;
+    this.claimCount = 0;
     this._resize();
     const ro = new ResizeObserver(() => this._resize());
     ro.observe(canvas.parentElement);
+    const _track = e => {
+      const src = e.touches ? e.touches[0] : e;
+      this.mouseX = src.clientX; this.mouseY = src.clientY;
+    };
+    window.addEventListener('mousemove', _track, { passive: true });
+    window.addEventListener('touchmove', _track, { passive: true });
   }
 
   _resize() {
@@ -765,10 +802,13 @@ class SpawnRenderer {
     if (this.ent) this.pts = this._makeParticles(this.ent, this.vit);
   }
 
-  setEntity(ent, vit) {
+  setEntity(ent, vit, claimCount) {
+    const isNew = ent?.id !== this.ent?.id;
     this.ent = ent;
     this.vit = vit || {};
+    this.claimCount = claimCount || 0;
     this.pts = ent ? this._makeParticles(ent, vit) : [];
+    if (ent && isNew) this.emergence = { active: true, progress: 0 };
   }
 
   _makeParticles(ent, vit) {
@@ -790,6 +830,9 @@ class SpawnRenderer {
         col: Math.random() > 0.55 ? pal.p : pal.s,
         ph: Math.random() * Math.PI * 2,
         phSpd: 0.018 + Math.random() * 0.038,
+        charge: 0,
+        chargeDecay: 0.93 + Math.random() * 0.05,
+        seed: Math.random() * 100,
       });
     }
     return pts;
@@ -826,13 +869,44 @@ class SpawnRenderer {
     cx.fillStyle = bg;
     cx.fillRect(0, 0, W, H);
 
-    // Rarity aura
-    const aura = cx.createRadialGradient(mx, my, 50, mx, my, 200);
+    // Heartbeat — pressure-driven cardiac pulse (rate scales with pressure)
+    const hbFreq = 0.5 + (ent.pressure / 100) * 1.5;
+    const hbRaw  = Math.pow(Math.max(0, Math.sin(t * hbFreq * Math.PI)), 10);
+    this.heartbeatIntensity = hbRaw * (0.3 + (ent.pressure / 100) * 0.7);
+
+    // Rarity aura — breathes with heartbeat
+    const auraR = 180 + this.heartbeatIntensity * 50;
+    const aura  = cx.createRadialGradient(mx, my, 50, mx, my, auraR);
     aura.addColorStop(0, rCol + '00');
-    aura.addColorStop(0.45, rCol + '14');
+    aura.addColorStop(0.45, rCol + (this.heartbeatIntensity > 0.18 ? '22' : '14'));
     aura.addColorStop(1,  rCol + '00');
     cx.fillStyle = aura;
     cx.fillRect(0, 0, W, H);
+
+    // Heartbeat bloom at cardiac peak
+    if (this.heartbeatIntensity > 0.1) {
+      const hg = cx.createRadialGradient(mx, my, 0, mx, my, 75 + this.heartbeatIntensity * 65);
+      const ha = Math.floor(this.heartbeatIntensity * 0x50).toString(16).padStart(2, '0');
+      hg.addColorStop(0, cc + ha); hg.addColorStop(1, cc + '00');
+      cx.fillStyle = hg; cx.fillRect(0, 0, W, H);
+    }
+
+    // Emergence ring — expands outward when a new entity arrives
+    if (this.emergence.active) {
+      this.emergence.progress = Math.min(1, this.emergence.progress + 0.02);
+      if (this.emergence.progress >= 1) this.emergence.active = false;
+      const ep  = this.emergence.progress;
+      const er  = ep * Math.min(W, H) * 0.52;
+      const eah = Math.floor((1 - ep) * 0.9 * 255).toString(16).padStart(2, '0');
+      cx.beginPath(); cx.arc(mx, my, er, 0, Math.PI * 2);
+      cx.strokeStyle = rCol + eah; cx.lineWidth = 2 + (1 - ep) * 5; cx.stroke();
+      if (ep > 0.14) {
+        const er2  = (ep - 0.14) * Math.min(W, H) * 0.52;
+        const eah2 = Math.floor((1 - (ep - 0.14)) * 0.38 * 255).toString(16).padStart(2, '0');
+        cx.beginPath(); cx.arc(mx, my, er2, 0, Math.PI * 2);
+        cx.strokeStyle = pal.p + eah2; cx.lineWidth = 1; cx.stroke();
+      }
+    }
 
     // Particles
     this._drawParticles(mx, my);
@@ -849,8 +923,15 @@ class SpawnRenderer {
     // Anomaly
     this._drawAnomaly(mx, my, ent, pal, t);
 
+    // Claim count overlay (bottom-left)
+    if (this.claimCount > 0) {
+      cx.fillStyle = 'rgba(0,229,160,0.42)';
+      cx.font = '9px "Space Mono", monospace';
+      cx.textAlign = 'left';
+      cx.fillText(this.claimCount + (this.claimCount === 1 ? ' collector' : ' collectors'), 10, H - 10);
+    }
     // ID watermark
-    cx.fillStyle = 'rgba(255,255,255,0.035)';
+    cx.fillStyle = 'rgba(255,255,255,0.032)';
     cx.font = '8px "Space Mono", monospace';
     cx.textAlign = 'center';
     cx.fillText(ent.id, mx, H - 10);
@@ -882,44 +963,88 @@ class SpawnRenderer {
   }
 
   _drawParticles(mx, my) {
-    const { cx } = this;
+    const { cx, ent } = this;
+    const positions = [];
     this.pts.forEach(p => {
       p.angle += p.spd;
       p.ph    += p.phSpd;
-      const r   = p.baseR + Math.sin(p.ph) * 13;
-      const px  = mx + Math.cos(p.angle) * r;
-      const py  = my + Math.sin(p.angle) * r;
-      const al  = p.alpha * (0.65 + 0.35 * Math.sin(p.ph));
+      // Organic radius — golden ratio + e sub-harmonics guarantee non-repetition
+      const r = p.baseR
+        + Math.sin(p.ph)         * p.baseR * 0.095
+        + Math.sin(p.ph * 1.618) * p.baseR * 0.044
+        + Math.sin(p.ph * 0.382) * p.baseR * 0.021
+        + organic(p.ph * 0.5, p.seed || 0) * p.baseR * 0.030;
+      const px = mx + Math.cos(p.angle) * r;
+      const py = my + Math.sin(p.angle) * r;
+      // Bioluminescence — stochastic cellular firing
+      if (Math.random() < 0.0025) p.charge = 0.9 + Math.random() * 0.6;
+      p.charge = (p.charge || 0) * (p.chargeDecay || 0.95);
+      const baseBright = p.alpha * (0.52 + 0.48 * Math.abs(Math.sin(p.ph)));
+      const al  = Math.min(1, baseBright + p.charge * 0.72);
       const alH = Math.floor(al * 255).toString(16).padStart(2, '0');
-      cx.beginPath(); cx.arc(px, py, p.size, 0, Math.PI * 2);
-      cx.fillStyle = p.col + alH; cx.fill();
+      cx.beginPath(); cx.arc(px, py, p.size + p.charge * 1.9, 0, Math.PI * 2);
+      cx.fillStyle = (p.charge > 0.35 ? '#ffffff' : p.col) + alH; cx.fill();
+      // Bioluminescent microglow on charged particles
+      if (p.charge > 0.4) {
+        const gr = 9 + p.charge * 14;
+        const gg = cx.createRadialGradient(px, py, 0, px, py, gr);
+        gg.addColorStop(0, p.col + Math.floor(p.charge * 0x50).toString(16).padStart(2,'0'));
+        gg.addColorStop(1, p.col + '00');
+        cx.fillStyle = gg; cx.beginPath(); cx.arc(px, py, gr, 0, Math.PI * 2); cx.fill();
+      }
       // Micro trail
-      const tx = px - Math.cos(p.angle) * 5;
-      const ty = py - Math.sin(p.angle) * 5;
-      cx.beginPath(); cx.arc(tx, ty, p.size * 0.4, 0, Math.PI * 2);
-      cx.fillStyle = p.col + '1e'; cx.fill();
+      cx.beginPath();
+      cx.arc(px - Math.cos(p.angle) * 5, py - Math.sin(p.angle) * 5, p.size * 0.4, 0, Math.PI * 2);
+      cx.fillStyle = p.col + '1a'; cx.fill();
+      positions.push({ x: px, y: py, col: p.col, charge: p.charge || 0 });
     });
+    // Synaptic arcs — neural connections between nearby particles
+    // Fire rate scales with pressure (more active organism = more arcs)
+    const arcChance = 0.06 * (ent ? ent.pressure / 100 : 0.3);
+    if (positions.length > 5 && Math.random() < arcChance) {
+      const i = Math.floor(Math.random() * positions.length);
+      const j = Math.floor(Math.random() * positions.length);
+      if (i !== j) {
+        const a = positions[i], b = positions[j];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (dist < this.W * 0.30) {
+          const midX = (a.x + b.x) / 2 + (Math.random() - 0.5) * dist * 0.6;
+          const midY = (a.y + b.y) / 2 + (Math.random() - 0.5) * dist * 0.6;
+          const charge = Math.max(a.charge, b.charge);
+          cx.beginPath(); cx.moveTo(a.x, a.y); cx.quadraticCurveTo(midX, midY, b.x, b.y);
+          cx.strokeStyle = a.col + Math.floor((0.10 + charge * 0.42) * 255).toString(16).padStart(2,'0');
+          cx.lineWidth = 0.4 + charge * 1.3; cx.stroke();
+        }
+      }
+    }
   }
 
   _drawBody(mx, my, ent, pal, cc, rCol, t) {
     const { cx } = this;
     const motion = ent.motion.toLowerCase();
-    const sz     = Math.min(this.W, this.H) * 0.10 + (ent.pressure / 100) * Math.min(this.W, this.H) * 0.04;
-    const pulse  = 1 + 0.038 * Math.sin(t * 2.4);
-
+    const sz = Math.min(this.W, this.H) * 0.10 + (ent.pressure / 100) * Math.min(this.W, this.H) * 0.04;
+    // Organic motion — φ, e, π harmonics make paths aperiodic (truly alive)
     let ox = 0, oy = 0;
-    if (motion === 'hovering')   { oy = Math.sin(t * 1.15) * 7; }
-    if (motion === 'spiraling')  { ox = Math.cos(t * 0.75) * 11; oy = Math.sin(t * 0.75) * 11; }
-    if (motion === 'orbiting')   { ox = Math.cos(t * 0.5)  * 9;  oy = Math.sin(t * 0.5)  * 5; }
-    if (motion === 'threading')  { ox = Math.sin(t * 1.9) * 5; }
-    if (motion === 'burrowing')  { oy = -Math.abs(Math.sin(t * 1.4)) * 9; }
-    if (motion === 'leaping')    { oy = -Math.abs(Math.sin(t * 1.8)) * 14; }
-    if (motion === 'cracking')   { if (Math.random() < 0.04) { ox = (Math.random()-0.5)*2; } }
-    if (motion === 'phasing')    { cx.globalAlpha = 0.68 + 0.32 * Math.sin(t * 2.8); }
-
+    const os1 = organic(t, 0.10);
+    const os2 = organic(t, 1.62);
+    const os3 = organic(t, 2.71);
+    if (motion === 'hovering')   { oy = os1 * 9; }
+    if (motion === 'spiraling')  { ox = organic(t, 0.2) * 13; oy = os2 * 13; }
+    if (motion === 'orbiting')   { ox = Math.cos(t * 0.5) * 9; oy = os3 * 7; }
+    if (motion === 'threading')  { ox = os1 * 7; oy = os2 * 2.5; }
+    if (motion === 'burrowing')  { oy = -Math.abs(os3) * 11; }
+    if (motion === 'leaping')    { oy = -Math.abs(Math.sin(t * 1.8)) * 16 + os1 * 3; }
+    if (motion === 'cracking')   { if (Math.random() < 0.04) { ox = os1 * 2; oy = os2 * 2; } }
+    if (motion === 'pulsing')    { cx.globalAlpha = 0.7 + 0.3 * (os1 * 0.5 + 0.5); }
+    if (motion === 'phasing')    { cx.globalAlpha = 0.52 + 0.48 * (organic(t, 0.5) * 0.5 + 0.5); }
+    if (motion === 'crawling')   { ox = os2 * 10; oy = os3 * 4; }
+    // Breathing — slow aperiodic scale via organic oscillator (feels alive, never loops)
+    const breathe = 1 + 0.046 * organic(t * 0.26, 0.55);
+    // Heartbeat — momentary scale spike tied to cardiac rhythm
+    const hbi = this.heartbeatIntensity || 0;
     cx.save();
     cx.translate(mx + ox, my + oy);
-    cx.scale(pulse, pulse);
+    cx.scale(breathe + hbi * 0.08, breathe + hbi * 0.045);
     this._drawShell(ent.shell.toLowerCase(), pal, cc, rCol, sz, t, ent.pressure);
     cx.restore();
     cx.globalAlpha = 1;
@@ -1086,7 +1211,16 @@ class SpawnRenderer {
       const pulse = 0.82 + 0.18 * Math.sin(t * 2.8 + dx);
       cx.beginPath(); cx.arc(0, 0, 5 * pulse, 0, Math.PI * 2);
       cx.fillStyle = ent.eyes === 'Void' ? '#000' : '#fff'; cx.fill();
-      cx.beginPath(); cx.arc(0, 0, 2.5 * pulse, 0, Math.PI * 2);
+      // Pupil tracks the viewer — the entity watches you
+      const canvasRect = this.cv.getBoundingClientRect();
+      const lookAngle  = Math.atan2(
+        this.mouseY - canvasRect.top  - (my + dy),
+        this.mouseX - canvasRect.left - (mx + dx)
+      );
+      const canSee = ent.eyes !== 'Blind' && ent.eyes !== 'Closed';
+      const pox = canSee ? Math.cos(lookAngle) * 1.6 : 0;
+      const poy = canSee ? Math.sin(lookAngle) * 1.6 : 0;
+      cx.beginPath(); cx.arc(pox, poy, 2.5 * pulse, 0, Math.PI * 2);
       cx.fillStyle = pal.p; cx.fill();
       const eg = cx.createRadialGradient(0, 0, 0, 0, 0, 11);
       eg.addColorStop(0, pal.p + 'aa'); eg.addColorStop(1, pal.p + '00');
@@ -1356,6 +1490,12 @@ function applyEntity(entity) {
 
   el('e-sv').textContent   = entity.shareValue;
   el('e-born').textContent = 'Born: ' + new Date(entity.bornAt).toLocaleString();
+  const ccEl = el('e-claimcount');
+  if (ccEl) {
+    ccEl.innerHTML = _currentClaimCount > 0
+      ? '<strong>' + _currentClaimCount + '</strong> collector' + (_currentClaimCount !== 1 ? 's' : '') + ' claimed this entity'
+      : 'Be the first to claim';
+  }
   // Entropy display in left panel
   const entropyEl = el('v-entropy');
   if (entropyEl && entity.hash) {
@@ -1499,12 +1639,13 @@ async function poll() {
     const stEl = el('v-stime');
     if (stEl && data.serverTime) stEl.textContent = new Date(data.serverTime).toLocaleTimeString();
 
+    _currentClaimCount = data.claims?.length ?? 0;
     const ent  = data.current;
     const slot = ent?.slot ?? null;
 
     if (slot !== _lastSlot) {
       _lastSlot = slot;
-      renderer?.setEntity(ent, data.serverVitals);
+      renderer?.setEntity(ent, data.serverVitals, _currentClaimCount);
       applyEntity(ent);
       // Trigger sound once per spawn slot
       if (ent && slot !== _lastSonSlot && data.claimable) {
@@ -1535,7 +1676,8 @@ async function doClaim() {
     });
     const data = await res.json();
     if (data.ok) {
-      showClaimed(data.entity, data.collector);
+      const cc = data.claims?.length ?? _currentClaimCount;
+      showClaimed(data.entity, data.collector, cc);
     } else {
       btn.textContent = data.error || 'FAILED';
       setTimeout(() => { btn.textContent = 'CLAIM'; btn.disabled = false; }, 3200);
@@ -1546,7 +1688,11 @@ async function doClaim() {
   }
 }
 
-function showClaimed(entity, collector) {
+function showClaimed(entity, collector, claimCount) {
+  _lastClaimedEntity    = entity;
+  _lastClaimedCollector = collector;
+  _lastClaimedCount     = claimCount || 0;
+  _currentClaimCount    = _lastClaimedCount;
   const ov = el('claimed-overlay');
   el('claimed-summary').innerHTML = `
     <div style="font-family:'Space Mono',monospace;font-size:1.5rem;color:#fff;margin-bottom:0.7rem">${entity.name}</div>
@@ -1555,6 +1701,7 @@ function showClaimed(entity, collector) {
     <div style="color:#3a3f55;font-size:0.72rem;margin-top:0.65rem">
       claimed by <span style="color:#c4ccdf">${collector}</span>
     </div>
+    ${_lastClaimedCount > 0 ? `<div style="color:rgba(0,229,160,0.7);font-size:0.7rem;margin-top:0.4rem">${_lastClaimedCount} total collector${_lastClaimedCount !== 1 ? 's' : ''}</div>` : ''}
     <div style="font-size:0.65rem;color:#3a3f55;margin-top:0.3rem">${entity.sonicFingerprint?.originFreqTag||''}</div>
     <div style="font-size:0.65rem;color:#3a3f55">Share Value: ${entity.shareValue}</div>
   `;
@@ -1562,6 +1709,202 @@ function showClaimed(entity, collector) {
   sonic.stop();
   if (!_soundMuted) sonic.play(entity.sonicFingerprint || makeFallbackSonic(entity));
   _lastClaimedSf = entity.sonicFingerprint || makeFallbackSonic(entity);
+}
+
+// ── DOWNLOAD ENTITY CARD ─────────────────────────────────────────────────────
+function generateEntityCard(entity, collector, claimCount) {
+  const sf = entity.sonicFingerprint || makeFallbackSonic(entity);
+  const bornStr = new Date(entity.bornAt).toLocaleString();
+  const genStr  = new Date().toLocaleString();
+  const palColors = {Ash:'#6d8fff',Ember:'#ff6d6d',Tide:'#6dffdd',Gale:'#c4ff6d',
+    Void:'#c46dff',Root:'#c4aa80',Neon:'#ff6dcc',Frost:'#6dccff',Dusk:'#ffaa6d',Bloom:'#6dffaa'};
+  const rarityColors = {Common:'#a0a0b0',Uncommon:'#6dff9d',Rare:'#6d8fff',
+    Epic:'#c46dff',Legendary:'#ffd76d',Mythic:'#ff6d9d'};
+  const entColor = palColors[entity.origin] || '#6d8fff';
+  const rc = rarityColors[entity.rarity] || '#ffffff';
+  const entJSON = JSON.stringify(entity).replace(/<\/script>/gi, '<\\/script>');
+  const sfJSON  = JSON.stringify(sf).replace(/<\/script>/gi, '<\\/script>');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SHARDBORN \u00b7 ${entity.name}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#020308;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;font-family:'Space Mono',monospace}
+.card{background:linear-gradient(135deg,#0a0d1a 0%,#070a14 100%);border:1px solid ${entColor}30;border-radius:4px;max-width:460px;width:100%;padding:2rem;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,${entColor}12 0%,transparent 65%);pointer-events:none}
+.wb{font-size:0.55rem;letter-spacing:0.4em;color:${entColor}80;margin-bottom:1.5rem;text-align:center}
+canvas{display:block;width:100%;aspect-ratio:1;border-radius:2px;margin:0 auto 1.5rem;background:#020308;max-height:320px}
+h1{font-size:1.45rem;color:#fff;letter-spacing:0.1em;text-align:center;margin-bottom:0.25rem;word-break:break-all}
+.eid{font-size:0.6rem;color:#3a3f55;text-align:center;letter-spacing:0.15em;margin-bottom:0.6rem}
+.rbadge{display:inline-block;padding:0.2rem 0.7rem;border:1px solid ${rc}60;color:${rc};font-size:0.6rem;letter-spacing:0.25em;border-radius:2px;background:${rc}14}
+.rc{text-align:center;margin-bottom:1.2rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1.2rem}
+.cell{background:rgba(255,255,255,0.03);padding:0.45rem 0.6rem;border-radius:2px}
+.cl{font-size:0.5rem;color:#3a3f55;letter-spacing:0.2em;margin-bottom:0.2rem;text-transform:uppercase}
+.cv{font-size:0.72rem;color:#c4ccdf}
+.sf{background:rgba(0,0,0,0.3);padding:0.75rem;border-radius:2px;margin-bottom:1rem;border-left:2px solid ${entColor}40}
+.sf .cl{margin-bottom:0.5rem}
+.sf .cv{font-size:0.62rem;line-height:1.8;color:#8890aa}
+.meta{font-size:0.55rem;color:#3a3f55;line-height:2;border-top:1px solid rgba(255,255,255,0.04);padding-top:0.75rem;margin-top:0.5rem}
+.claimline{font-size:0.65rem;color:rgba(0,229,160,0.7);text-align:center;margin:0.5rem 0}
+.snd-btn{display:block;width:100%;padding:0.55rem;background:${entColor}15;border:1px solid ${entColor}40;color:${entColor};font-family:inherit;font-size:0.62rem;letter-spacing:0.2em;cursor:pointer;border-radius:2px;margin-bottom:1rem;transition:all 0.3s}
+.snd-btn:hover{background:${entColor}28}
+.snd-btn.playing{box-shadow:0 0 24px ${entColor}40;background:${entColor}22}
+@media(max-width:480px){.card{padding:1.2rem}.grid{grid-template-columns:1fr}}
+</style></head>
+<body><div class="card">
+<div class="wb">\u2736 SHARDBORN \u00b7 ENTITY RECORD \u2736</div>
+<canvas id="c" width="320" height="320"></canvas>
+<h1>${entity.name}</h1>
+<div class="eid">${entity.id}</div>
+<div class="rc"><span class="rbadge">${entity.rarity.toUpperCase()}</span></div>
+${claimCount > 0 ? `<div class="claimline">${claimCount} collector${claimCount !== 1 ? 's' : ''} claimed this entity</div>` : ''}
+<div class="grid">
+  <div class="cell"><div class="cl">Origin</div><div class="cv">${entity.origin}</div></div>
+  <div class="cell"><div class="cl">Shell</div><div class="cv">${entity.shell}</div></div>
+  <div class="cell"><div class="cl">Core</div><div class="cv">${entity.core}</div></div>
+  <div class="cell"><div class="cl">Motion</div><div class="cv">${entity.motion}</div></div>
+  <div class="cell"><div class="cl">Eyes</div><div class="cv">${entity.eyes}</div></div>
+  <div class="cell"><div class="cl">Mark</div><div class="cv">${entity.mark}</div></div>
+  <div class="cell"><div class="cl">Temperament</div><div class="cv">${entity.temperament}</div></div>
+  <div class="cell"><div class="cl">Anomaly</div><div class="cv">${entity.anomaly}</div></div>
+</div>
+<div class="sf">
+  <div class="cl">Sonic Fingerprint</div>
+  <div class="cv">${sf.fundamentalHz.toFixed(2)} Hz \u00b7 ${sf.originFreqTag || ''}<br>
+    Mode: ${sf.scaleMode} \u00b7 Mood: ${sf.moodTag}<br>
+    Tempo: ${sf.tempo} BPM \u00b7 Partials: ${sf.partialCount}<br>
+    Binaural \u03b8-beat: ${sf.binauralBeatHz} Hz</div>
+</div>
+<button class="snd-btn" id="snd-btn" onclick="playSonic()">\u266a PLAY SONIC FINGERPRINT</button>
+<div class="meta">
+  Claimed by: <strong style="color:#c4ccdf">${collector}</strong><br>
+  Born: ${bornStr}<br>
+  Share Value: ${entity.shareValue}<br>
+  Downloaded: ${genStr}
+</div>
+</div>
+<script>
+'use strict';
+const ENTITY = ${entJSON};
+const SF = ${sfJSON};
+// Minimal organic oscillator (same constants as the live app)
+function organic(t,seed){
+  return Math.sin(t+seed)*0.5+Math.sin(t*1.618+seed*2.3)*0.25+Math.sin(t*2.718+seed*0.7)*0.125+Math.sin(t*3.141+seed*1.4)*0.0625;
+}
+// Canvas creature renderer
+(function(){
+  const cv=document.getElementById('c');
+  const cx=cv.getContext('2d');
+  const W=320,H=320,mx=160,my=160;
+  const PAL={Ash:{p:'#6d8fff',s:'#4d5fa0',bg:'#0d1120'},Ember:{p:'#ff6d6d',s:'#a04040',bg:'#1a0d0d'},Tide:{p:'#6dffdd',s:'#3090a0',bg:'#0d1a18'},Gale:{p:'#c4ff6d',s:'#80a040',bg:'#121a0d'},Void:{p:'#c46dff',s:'#7040a0',bg:'#11081a'},Root:{p:'#c4aa80',s:'#806040',bg:'#141008'},Neon:{p:'#ff6dcc',s:'#a04080',bg:'#1a0d14'},Frost:{p:'#6dccff',s:'#4080a0',bg:'#0d1318'},Dusk:{p:'#ffaa6d',s:'#b06030',bg:'#18100d'},Bloom:{p:'#6dffaa',s:'#40a060',bg:'#0d1812'}};
+  const RC={Common:'#a0a0b0',Uncommon:'#6dff9d',Rare:'#6d8fff',Epic:'#c46dff',Legendary:'#ffd76d',Mythic:'#ff6d9d'};
+  const CC={Crystal:'#aaddff',Shadow:'#553388',Flame:'#ff8833',Void:'#cc55ff',Root:'#aa8856',Plasma:'#55ffcc',Drift:'#8899ff',Bone:'#e0d8c8',Ember:'#ff5533',Bloom:'#55ff99'};
+  const pal=PAL[ENTITY.origin]||PAL.Ash;
+  const rCol=RC[ENTITY.rarity]||'#ffffff';
+  const cc=CC[ENTITY.core]||pal.p;
+  const pts=[];
+  const cnt=30+({Common:0,Uncommon:6,Rare:12,Epic:22,Legendary:35,Mythic:55}[ENTITY.rarity]||0);
+  for(let i=0;i<cnt;i++){
+    const a=(Math.PI*2*i/cnt)+Math.random()*0.25;
+    const br=W*0.13+Math.random()*W*0.13;
+    const sp=(0.005+Math.random()*0.012)*(Math.random()>0.5?1:-1);
+    pts.push({angle:a,baseR:br,spd:sp,size:0.8+Math.random()*2,alpha:0.3+Math.random()*0.6,col:Math.random()>0.55?pal.p:pal.s,ph:Math.random()*Math.PI*2,phSpd:0.02+Math.random()*0.04,seed:Math.random()*100,charge:0,chargeDecay:0.94+Math.random()*0.04});
+  }
+  let t=0,hbi=0;
+  function draw(){
+    cx.clearRect(0,0,W,H);
+    const bg=cx.createRadialGradient(mx,my,0,mx,my,W*0.5);
+    bg.addColorStop(0,pal.bg+'ff');bg.addColorStop(1,'#020308ff');
+    cx.fillStyle=bg;cx.fillRect(0,0,W,H);
+    const hbRaw=Math.pow(Math.max(0,Math.sin(t*(0.5+(ENTITY.pressure/100)*1.5)*Math.PI)),10);
+    hbi=hbRaw*(0.3+(ENTITY.pressure/100)*0.7);
+    const aura=cx.createRadialGradient(mx,my,40,mx,my,180+hbi*50);
+    aura.addColorStop(0,rCol+'00');aura.addColorStop(0.45,rCol+(hbi>0.18?'22':'14'));aura.addColorStop(1,rCol+'00');
+    cx.fillStyle=aura;cx.fillRect(0,0,W,H);
+    if(hbi>0.1){const hg=cx.createRadialGradient(mx,my,0,mx,my,75+hbi*65);const ha=Math.floor(hbi*0x50).toString(16).padStart(2,'0');hg.addColorStop(0,cc+ha);hg.addColorStop(1,cc+'00');cx.fillStyle=hg;cx.fillRect(0,0,W,H);}
+    const positions=[];
+    pts.forEach(p=>{
+      p.angle+=p.spd;p.ph+=p.phSpd;
+      if(Math.random()<0.0025)p.charge=0.9+Math.random()*0.5;
+      p.charge*=p.chargeDecay;
+      const r=p.baseR+Math.sin(p.ph)*p.baseR*0.09+Math.sin(p.ph*1.618)*p.baseR*0.04+organic(p.ph*0.5,p.seed)*p.baseR*0.03;
+      const px=mx+Math.cos(p.angle)*r,py=my+Math.sin(p.angle)*r;
+      const al=Math.min(1,p.alpha*(0.55+0.45*Math.abs(Math.sin(p.ph)))+p.charge*0.7);
+      const alH=Math.floor(al*255).toString(16).padStart(2,'0');
+      cx.beginPath();cx.arc(px,py,p.size+p.charge*1.8,0,Math.PI*2);
+      cx.fillStyle=(p.charge>0.35?'#ffffff':p.col)+alH;cx.fill();
+      cx.beginPath();cx.arc(px-Math.cos(p.angle)*5,py-Math.sin(p.angle)*5,p.size*0.4,0,Math.PI*2);
+      cx.fillStyle=p.col+'1a';cx.fill();
+      positions.push({x:px,y:py,col:p.col,charge:p.charge});
+    });
+    if(positions.length>5&&Math.random()<0.06*(ENTITY.pressure/100)){
+      const i=Math.floor(Math.random()*positions.length),j=Math.floor(Math.random()*positions.length);
+      if(i!==j){const a=positions[i],b=positions[j];const d=Math.hypot(a.x-b.x,a.y-b.y);if(d<W*0.3){const mx2=(a.x+b.x)/2+(Math.random()-0.5)*d*0.6,my2=(a.y+b.y)/2+(Math.random()-0.5)*d*0.6;const ch=Math.max(a.charge,b.charge);cx.beginPath();cx.moveTo(a.x,a.y);cx.quadraticCurveTo(mx2,my2,b.x,b.y);cx.strokeStyle=a.col+Math.floor((0.1+ch*0.42)*255).toString(16).padStart(2,'0');cx.lineWidth=0.4+ch*1.3;cx.stroke();}}
+    }
+    const motion=ENTITY.motion.toLowerCase();
+    let ox=0,oy=0;
+    const os1=organic(t,0.1),os2=organic(t,1.62),os3=organic(t,2.71);
+    if(motion==='hovering'){oy=os1*9;}
+    if(motion==='spiraling'){ox=organic(t,0.2)*13;oy=os2*13;}
+    if(motion==='orbiting'){ox=Math.cos(t*0.5)*9;oy=os3*7;}
+    if(motion==='threading'){ox=os1*7;oy=os2*2.5;}
+    if(motion==='burrowing'){oy=-Math.abs(os3)*11;}
+    if(motion==='leaping'){oy=-Math.abs(Math.sin(t*1.8))*16+os1*3;}
+    if(motion==='cracking'&&Math.random()<0.04){ox=os1*2;oy=os2*2;}
+    if(motion==='phasing'){cx.globalAlpha=0.52+0.48*(organic(t,0.5)*0.5+0.5);}
+    if(motion==='crawling'){ox=os2*10;oy=os3*4;}
+    const breathe=1+0.046*organic(t*0.26,0.55);
+    const sz=W*0.10+(ENTITY.pressure/100)*W*0.04;
+    cx.save();cx.translate(mx+ox,my+oy);cx.scale(breathe+hbi*0.08,breathe+hbi*0.045);
+    const g=cx.createRadialGradient(0,-sz*0.1,sz*0.08,0,0,sz);
+    g.addColorStop(0,cc+'cc');g.addColorStop(0.42,pal.p+'88');g.addColorStop(1,pal.s+'28');
+    cx.beginPath();cx.ellipse(0,0,sz*0.58,sz,0,0,Math.PI*2);cx.fillStyle=g;cx.fill();
+    cx.strokeStyle=pal.p+'80';cx.lineWidth=1.5;cx.stroke();
+    const ig=cx.createRadialGradient(0,0,0,0,0,18);ig.addColorStop(0,cc+'ff');ig.addColorStop(1,cc+'00');
+    cx.beginPath();cx.arc(0,0,18,0,Math.PI*2);cx.fillStyle=ig;cx.fill();
+    cx.restore();cx.globalAlpha=1;
+    cx.fillStyle='rgba(255,255,255,0.04)';cx.font='7px Space Mono,monospace';
+    cx.textAlign='center';cx.fillText('SHARDBORN',160,H-8);
+    t+=0.016;requestAnimationFrame(draw);
+  }
+  draw();
+})();
+// Minimal sonic engine for card playback
+let _actx=null,_sNodes=[],_playing=false;
+function playSonic(){
+  const btn=document.getElementById('snd-btn');
+  if(_playing){_sNodes.forEach(n=>{try{n.stop();}catch(e){}});_sNodes=[];_playing=false;btn.textContent='\u266a PLAY SONIC FINGERPRINT';btn.classList.remove('playing');return;}
+  if(!_actx)_actx=new(window.AudioContext||window.webkitAudioContext)();
+  const actx=_actx;
+  const master=actx.createGain();master.gain.value=0.22;master.connect(actx.destination);
+  function osc(freq,type,vol,dur){const o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(vol,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+dur);o.connect(g);g.connect(master);o.start();o.stop(actx.currentTime+dur);_sNodes.push(o);}
+  osc(SF.fundamentalHz,'sine',0.5,9);
+  osc(SF.fundamentalHz*2,'sine',0.25,9);
+  osc(SF.fundamentalHz*3,'triangle',0.12,7);
+  osc(SF.fundamentalHz*(1+SF.binauralBeatHz/SF.fundamentalHz),'sine',0.15,9);
+  _playing=true;btn.textContent='\u25a0 STOP';btn.classList.add('playing');
+  setTimeout(()=>{_playing=false;btn.textContent='\u266a PLAY SONIC FINGERPRINT';btn.classList.remove('playing');},9200);
+}
+<\/script>
+</body></html>`;
+}
+
+function downloadCard() {
+  if (!_lastClaimedEntity) return;
+  const html = generateEntityCard(_lastClaimedEntity, _lastClaimedCollector, _lastClaimedCount);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  const name = (_lastClaimedEntity.name || 'entity').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  a.download = 'shardborn-' + name + '.html';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
 }
 
 // ── SOUND CONTROLS ───────────────────────────────────────────────────────────
