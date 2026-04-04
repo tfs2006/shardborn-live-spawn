@@ -311,6 +311,31 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
 
+    /* ── URGENCY PULSE ──────────────────────────────────────────── */
+    @keyframes urgency-ring {
+      0%,100% { box-shadow: inset 0 0 0 0 var(--uc,#f87171); }
+      50%      { box-shadow: inset 0 0 28px 6px var(--uc,#f87171); }
+    }
+    #stage.urgency { animation: urgency-ring 0.48s ease-in-out infinite; }
+    @keyframes shakecnt {
+      0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)}
+    }
+    #countdown.urgent { color:#f87171!important; animation:blink 0.4s ease-in-out infinite,shakecnt 0.24s ease-in-out infinite; }
+
+    /* ── ARCHETYPE & SYNERGY ────────────────────────────────────── */
+    #e-archetype { padding:0.45rem 0.55rem; background:rgba(255,255,255,0.018); border:1px solid var(--border); }
+    #e-archetype .arch-title { font-family:'Space Mono',monospace; font-size:0.78rem; color:#fff; display:block; margin-bottom:0.18rem; letter-spacing:0.06em; }
+    #e-archetype .arch-sub   { font-size:0.58rem; color:var(--dim); letter-spacing:0.12em; text-transform:uppercase; }
+    .synergy-badge { display:inline-block; padding:0.14rem 0.55rem; font-family:'Space Mono',monospace; font-size:0.56rem; letter-spacing:0.14em; border:1px solid currentColor; border-radius:2px; opacity:0.9; text-transform:uppercase; }
+
+    /* ── SPAWN FEED ─────────────────────────────────────────────── */
+    #spawn-feed { min-height:1.2rem; }
+    .sf-row { display:flex; justify-content:space-between; align-items:baseline; padding:0.28rem 0; border-top:1px solid var(--border); animation:sfrfade 0.5s ease; }
+    @keyframes sfrfade { from{opacity:0;transform:translateX(-5px)} to{opacity:1;transform:translateX(0)} }
+    .sfn { font-family:'Space Mono',monospace; font-size:0.6rem; color:var(--text); }
+    .sfr { font-family:'Space Mono',monospace; font-size:0.54rem; }
+    .sft { font-size:0.52rem; color:var(--dim); }
+
     /* ── RESPONSIVE ────────────────────────────────────────────── */
     @media (max-width: 860px) {
       body { overflow-y: auto; }
@@ -417,6 +442,9 @@
 
     <div class="p-title" style="margin-top:0.65rem">Entity Entropy</div>
     <div id="v-entropy">—</div>
+
+    <div class="p-title" style="margin-top:0.65rem">Recent Spawns</div>
+    <div id="spawn-feed"><span style="font-size:0.62rem;color:var(--dim)">Listening…</span></div>
   </aside>
 
   <!-- Center: Canvas Stage -->
@@ -455,6 +483,8 @@
         <div class="tcell"><div class="tl">Temperament</div><div class="tv" id="t-temp">—</div></div>
         <div class="tcell"><div class="tl">Anomaly</div><div class="tv" id="t-anom">—</div></div>
       </div>
+      <div id="e-archetype" style="display:none"></div>
+      <div id="e-combos" style="display:none;flex-wrap:wrap;gap:0.28rem"></div>
       <div class="p-title" style="margin-top:0.1rem">Sonic Fingerprint</div>
       <div>
         <div id="s-hz">—</div>
@@ -808,7 +838,28 @@ class SpawnRenderer {
     this.vit = vit || {};
     this.claimCount = claimCount || 0;
     this.pts = ent ? this._makeParticles(ent, vit) : [];
-    if (ent && isNew) this.emergence = { active: true, progress: 0 };
+    if (ent && isNew) this.emergence = { active: true, progress: 0, glyphs: this._makeGlyphs(ent) };
+    else if (!ent) this.emergence = { active: false, progress: 0, glyphs: [] };
+  }
+
+  _makeGlyphs(ent) {
+    const glyphs = [];
+    const chars = '01アイウエオカキ∅∞⊕⊗◈⟁⌬⌖⎔⏣⏢⏥☰⌀';
+    const h = ent.hash || '0000000000000000';
+    for (let i = 0; i < 20; i++) {
+      const si = (i * 2) % (h.length - 2);
+      const s0 = parseInt(h.slice(si, si + 2), 16) || 0;
+      const s1 = parseInt(h.slice((si + 5) % (h.length - 2), (si + 7) % (h.length - 2)), 16) || 0;
+      glyphs.push({
+        x: 0.08 + (s0 / 255) * 0.84,
+        y: 0.08 + (s1 / 255) * 0.84,
+        char: chars[s0 % chars.length],
+        speed: 0.004 + (s0 % 8) * 0.001,
+        alpha: 0.15 + (s0 % 5) * 0.08,
+        phase: (s0 / 255) * Math.PI * 2,
+      });
+    }
+    return glyphs;
   }
 
   _makeParticles(ent, vit) {
@@ -891,37 +942,51 @@ class SpawnRenderer {
       cx.fillStyle = hg; cx.fillRect(0, 0, W, H);
     }
 
-    // Emergence ring — expands outward when a new entity arrives
+    // ── Multi-phase materialization ──────────────────────────────────────────
     if (this.emergence.active) {
-      this.emergence.progress = Math.min(1, this.emergence.progress + 0.02);
+      this.emergence.progress = Math.min(1, this.emergence.progress + 0.008);
       if (this.emergence.progress >= 1) this.emergence.active = false;
-      const ep  = this.emergence.progress;
-      const er  = ep * Math.min(W, H) * 0.52;
-      const eah = Math.floor((1 - ep) * 0.9 * 255).toString(16).padStart(2, '0');
-      cx.beginPath(); cx.arc(mx, my, er, 0, Math.PI * 2);
-      cx.strokeStyle = rCol + eah; cx.lineWidth = 2 + (1 - ep) * 5; cx.stroke();
-      if (ep > 0.14) {
-        const er2  = (ep - 0.14) * Math.min(W, H) * 0.52;
-        const eah2 = Math.floor((1 - (ep - 0.14)) * 0.38 * 255).toString(16).padStart(2, '0');
-        cx.beginPath(); cx.arc(mx, my, er2, 0, Math.PI * 2);
-        cx.strokeStyle = pal.p + eah2; cx.lineWidth = 1; cx.stroke();
+    }
+    const emProg = this.emergence.progress;
+
+    if (this.emergence.active && emProg < 0.30) {
+      // Phase 0 (0–30%): Entropy cloud — glyph fragments, no body visible yet
+      this._drawEntropy(mx, my, ent, pal, t, emProg);
+
+    } else if (this.emergence.active && emProg < 0.70) {
+      // Phase 1 (30–70%): Silhouette emerging with scan lines
+      const alpha = Math.min(1, (emProg - 0.30) / 0.40);
+      this._drawParticles(mx, my);
+      cx.save();
+      cx.globalAlpha = alpha * 0.82;
+      this._drawBody(mx, my, ent, pal, cc, rCol, t);
+      cx.globalAlpha = alpha * 0.65;
+      this._drawEyes(mx, my, ent, pal, t);
+      cx.restore();
+      this._drawScanlines(mx, my, pal, alpha, t);
+
+    } else {
+      // Phase 2 (70–100%) + steady state: full render
+      this._drawParticles(mx, my);
+      this._drawBody(mx, my, ent, pal, cc, rCol, t);
+      this._drawEyes(mx, my, ent, pal, t);
+      this._drawMark(mx, my, ent, pal, t);
+      this._drawAnomaly(mx, my, ent, pal, t);
+      // Reveal ring in phase 2 only
+      if (this.emergence.active) {
+        const ringP = Math.min(1, (emProg - 0.70) / 0.30);
+        const er    = ringP * Math.min(W, H) * 0.52;
+        const eah   = Math.floor((1 - ringP) * 0.9 * 255).toString(16).padStart(2, '0');
+        cx.beginPath(); cx.arc(mx, my, er, 0, Math.PI * 2);
+        cx.strokeStyle = rCol + eah; cx.lineWidth = 2 + (1 - ringP) * 5; cx.stroke();
+        if (ringP > 0.18) {
+          const er2  = (ringP - 0.18) * Math.min(W, H) * 0.52;
+          const eah2 = Math.floor((1 - (ringP - 0.18)) * 0.38 * 255).toString(16).padStart(2, '0');
+          cx.beginPath(); cx.arc(mx, my, er2, 0, Math.PI * 2);
+          cx.strokeStyle = pal.p + eah2; cx.lineWidth = 1; cx.stroke();
+        }
       }
     }
-
-    // Particles
-    this._drawParticles(mx, my);
-
-    // Entity body
-    this._drawBody(mx, my, ent, pal, cc, rCol, t);
-
-    // Eyes
-    this._drawEyes(mx, my, ent, pal, t);
-
-    // Mark
-    this._drawMark(mx, my, ent, pal, t);
-
-    // Anomaly
-    this._drawAnomaly(mx, my, ent, pal, t);
 
     // Claim count overlay (bottom-left)
     if (this.claimCount > 0) {
@@ -1380,6 +1445,136 @@ class SpawnRenderer {
     }
     cx.restore();
   }
+
+  _drawEntropy(mx, my, ent, pal, t, progress) {
+    const { cx, W, H } = this;
+    const rCol = RARITY_COLOR[ent.rarity] || '#ffffff';
+    // Noise particles converging toward center
+    const density = 60 + Math.floor(progress * 100);
+    for (let i = 0; i < density; i++) {
+      const seed  = (i * 137.508 + t * 18) % 999;
+      const angle = (seed / 999) * Math.PI * 2;
+      const dist  = (0.88 - progress * 0.72) * W * 0.36 + Math.sin(seed * 0.09 + t) * W * 0.055;
+      const px    = mx + Math.cos(angle) * dist;
+      const py    = my + Math.sin(angle) * dist;
+      const al    = (0.06 + progress * 0.20) * (0.4 + 0.6 * Math.sin(seed * 0.07 + t * 2.8));
+      const alH   = Math.floor(Math.max(0, Math.min(1, al)) * 255).toString(16).padStart(2, '0');
+      cx.beginPath(); cx.arc(px, py, 0.8, 0, Math.PI * 2);
+      cx.fillStyle = pal.p + alH; cx.fill();
+    }
+    // Glyph fragments floating in
+    const glyphs = this.emergence.glyphs || [];
+    cx.font = '11px "Space Mono", monospace';
+    cx.textAlign = 'center';
+    glyphs.forEach(g => {
+      const convX = mx + (g.x - 0.5) * W * (1.05 - progress * 0.7);
+      const convY = my + (g.y - 0.5) * H * (1.05 - progress * 0.7);
+      const al    = g.alpha * (0.25 + 0.75 * progress) * (0.5 + 0.5 * Math.sin(t * 2.2 + g.phase));
+      const alH   = Math.floor(Math.max(0, Math.min(1, al)) * 255).toString(16).padStart(2, '0');
+      cx.fillStyle = pal.p + alH;
+      cx.fillText(g.char, convX, convY);
+    });
+    // Ghost entity outline (barely visible, gives a preview)
+    cx.save(); cx.globalAlpha = progress * 0.16;
+    this._drawBody(mx, my, ent, pal, CORE_COLOR[ent.core] || pal.p, rCol, t);
+    cx.restore();
+    // Assembling arc ring
+    cx.beginPath();
+    cx.arc(mx, my, 8 + progress * W * 0.09, 0, Math.PI * 2 * progress);
+    cx.strokeStyle = pal.p + '44'; cx.lineWidth = 1; cx.stroke();
+  }
+
+  _drawScanlines(mx, my, pal, alpha, t) {
+    const { cx, W, H } = this;
+    // Moving scan line swept downward
+    const scanY = my - H * 0.36 + ((t * 82) % (H * 0.72));
+    const sg = cx.createLinearGradient(mx - W * 0.32, scanY - 18, mx + W * 0.32, scanY + 4);
+    sg.addColorStop(0,   pal.p + '00');
+    sg.addColorStop(0.5, pal.p + Math.floor(alpha * 0x58).toString(16).padStart(2, '0'));
+    sg.addColorStop(1,   pal.p + '00');
+    cx.fillStyle = sg;
+    cx.fillRect(mx - W * 0.32, scanY - 18, W * 0.64, 22);
+    // Horizontal data lines
+    cx.beginPath();
+    for (let y = my - H * 0.36; y < my + H * 0.36; y += 13) {
+      cx.moveTo(mx - W * 0.30, y);
+      cx.lineTo(mx + W * 0.30, y);
+    }
+    cx.strokeStyle = pal.p + Math.floor(alpha * 0x11).toString(16).padStart(2, '0');
+    cx.lineWidth = 0.5; cx.stroke();
+  }
+}
+
+// ── ARCHETYPES ────────────────────────────────────────────────────────────────
+const ARCHETYPE_ORIGIN = {
+  Ash:'Cinder', Tide:'Tide', Bloom:'Garden', Static:'Phantom',
+  Dusk:'Dusk',  Void:'Null', Aurora:'Dawn',  Iron:'Forge',
+  Glass:'Crystal', Storm:'Gale'
+};
+const ARCHETYPE_SHELL = {
+  Idol:'Warden', Serpent:'Drake', Lattice:'Weaver', Bloomform:'Lotus',
+  Monolith:'Ancient', Swarm:'Colony', Spiral:'Vortex',
+  Cocoon:'Sleeper', Prism:'Refractor', Beast:'Hunter'
+};
+const ARCHETYPE_LORE = {
+  'Cinder Warden':'Guardian of dying stars',   'Cinder Drake':'Serpent of smoldering ruin',
+  'Tide Drake':'Primordial sea-serpent',        'Tide Lotus':'Living current lifeform',
+  'Garden Lotus':'Bloom-born sentience',        'Null Hunter':'Apex predator of the void',
+  'Null Ancient':'Relic from before existence', 'Dawn Refractor':'Light-weaving celestial',
+  'Dawn Lotus':'First light made flesh',        'Crystal Refractor':'Mirror-gazing oracle',
+  'Gale Vortex':'Tempest given form',           'Forge Ancient':'Iron memory of epochs',
+  'Phantom Weaver':'Signal between worlds',     'Dusk Sleeper':'Entity in eternal transit',
+  'Null Vortex':'Abyss-born consuming spiral',  'Cinder Hunter':'Ashen apex predator',
+  'Tide Colony':'Ocean swarm consciousness',    'Gale Drake':'Lightning serpent',
+};
+function getArchetype(entity) {
+  const o = ARCHETYPE_ORIGIN[entity.origin] || entity.origin;
+  const s = ARCHETYPE_SHELL[entity.shell]   || entity.shell;
+  const title = `${o} ${s}`;
+  const lore  = ARCHETYPE_LORE[title] || `${entity.origin} ${entity.temperament.toLowerCase()} entity`;
+  return { title, lore };
+}
+
+// ── SYNERGIES ─────────────────────────────────────────────────────────────────
+const SYNERGY_DEFS = [
+  { traits:{anomaly:'Singular',rarity:'Mythic'},             label:'ABERRANT',        color:'#F87171' },
+  { traits:{origin:'Void',anomaly:'Impossible'},             label:'VOID PARADOX',    color:'#C084FC' },
+  { traits:{eyes:'Oracle',temperament:'Prophetic'},          label:'SEER',            color:'#60A5FA' },
+  { traits:{origin:'Glass',eyes:'Oracle',mark:'Celestial'},  label:'ORACLE PRIME',    color:'#F1F5F9' },
+  { traits:{core:'Singularity',anomaly:'Impossible'},        label:'EVENT HORIZON',   color:'#A855F7' },
+  { traits:{origin:'Storm',motion:'Spiraling',core:'Nova'},  label:'STORM NOVA',      color:'#FCD34D' },
+  { traits:{origin:'Tide',shell:'Bloomform',core:'Frost'},   label:'FROST BLOOM',     color:'#67E8F9' },
+  { traits:{temperament:'Jealous',anomaly:'Recursive'},      label:'OUROBOROS',       color:'#F472B6' },
+  { traits:{origin:'Aurora',mark:'Celestial',core:'Prism'},  label:'AURORA PRISM',   color:'#34D399' },
+  { traits:{anomaly:'Chronal',core:'Echo'},                  label:'TEMPORAL ECHO',   color:'#A78BFA' },
+  { traits:{shell:'Swarm',motion:'Pulsing'},                 label:'SURGE COLONY',    color:'#FB923C' },
+  { traits:{eyes:'Crown',mark:'Solar',origin:'Aurora'},      label:'SOLAR SOVEREIGN', color:'#FBBF24' },
+  { traits:{temperament:'Chaotic',anomaly:'Glitched'},       label:'SYSTEM BREACH',   color:'#818CF8' },
+  { traits:{shell:'Monolith',core:'Thorn',temperament:'Territorial'}, label:'IRON THRONE', color:'#94A3B8' },
+  { traits:{origin:'Void',core:'Singularity'},               label:'NULL CORE',       color:'#7C3AED' },
+  { traits:{anomaly:'Singular'},                             label:'SINGULAR',        color:'#FBBF24' },
+  { traits:{eyes:'Mirrored',anomaly:'Mirrored'},             label:'TWIN REFLECTION', color:'#818CF8' },
+  { traits:{temperament:'Blessed',mark:'Celestial'},         label:'DIVINE SEAL',     color:'#34D399' },
+];
+function detectSynergies(entity) {
+  return SYNERGY_DEFS.filter(d => Object.entries(d.traits).every(([k,v]) => entity[k] === v));
+}
+
+// ── SPAWN FEED ────────────────────────────────────────────────────────────────
+let _feedShownSlot = -1;
+function updateSpawnFeed(slot, entity) {
+  if (!entity || slot === _feedShownSlot) return;
+  _feedShownSlot = slot;
+  const feed = el('spawn-feed');
+  if (!feed) return;
+  if (feed.querySelector('span')) feed.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'sf-row';
+  const rc = RARITY_COLOR[entity.rarity] || '#888';
+  const ts = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  row.innerHTML = `<span class="sfn">${entity.name}</span><span class="sfr" style="color:${rc}">${entity.rarity.toUpperCase()}</span><span class="sft">${ts}</span>`;
+  feed.insertBefore(row, feed.firstChild);
+  while (feed.children.length > 5) feed.removeChild(feed.lastChild);
 }
 
 // ── LIVE STATE CACHE (for fast timer ticks) ──────────────────────────────────
@@ -1453,6 +1648,8 @@ function applyEntity(entity) {
     infoEl.style.display = 'none';
     cfEl.classList.remove('on');
     el('freq-tag').textContent = '';
+    const ae = el('e-archetype'); if (ae) ae.style.display = 'none';
+    const ce = el('e-combos');    if (ce) ce.style.display = 'none';
     return;
   }
 
@@ -1490,6 +1687,29 @@ function applyEntity(entity) {
 
   el('e-sv').textContent   = entity.shareValue;
   el('e-born').textContent = 'Born: ' + new Date(entity.bornAt).toLocaleString();
+
+  // Archetype
+  const archEl = el('e-archetype');
+  if (archEl) {
+    const arch = getArchetype(entity);
+    archEl.style.display = 'block';
+    archEl.innerHTML = `<span class="arch-title">${arch.title}</span><span class="arch-sub">${arch.lore}</span>`;
+  }
+  // Synergies
+  const combosEl = el('e-combos');
+  if (combosEl) {
+    const syns = detectSynergies(entity);
+    if (syns.length > 0) {
+      combosEl.style.display = 'flex';
+      combosEl.innerHTML = syns.map(s =>
+        `<span class="synergy-badge" style="color:${s.color};border-color:${s.color}40;background:${s.color}08">${s.label}</span>`
+      ).join('');
+    } else {
+      combosEl.style.display = 'none';
+      combosEl.innerHTML = '';
+    }
+  }
+
   const ccEl = el('e-claimcount');
   if (ccEl) {
     ccEl.innerHTML = _currentClaimCount > 0
@@ -1506,22 +1726,36 @@ function applyEntity(entity) {
 
 function applyTimer(state) {
   if (!state) return;
-  const now  = Date.now();
-  const tval = el('t-val');
-  const cdEl = el('countdown');
-  const msgEl= el('stage-msg');
-  const bdg  = el('spawn-badge');
+  const now   = Date.now();
+  const tval  = el('t-val');
+  const cdEl  = el('countdown');
+  const msgEl = el('stage-msg');
+  const bdg   = el('spawn-badge');
+  const stage = el('stage');
 
   if (state.claimable && state.claimEndsAt) {
     const rem = Math.max(0, state.claimEndsAt - now);
     tval.textContent = (rem / 1000).toFixed(1) + 's';
     bdg.classList.add('on');
     cdEl.classList.remove('on');
-    msgEl.textContent = 'SPAWN ACTIVE · CLAIM NOW';
+    // Urgency effects as window closes
+    if (rem < 5000 && stage) {
+      const ent = _liveState?.current;
+      const uc  = ent ? (RARITY_COLOR[ent.rarity] || '#f87171') : '#f87171';
+      stage.style.setProperty('--uc', uc);
+      stage.classList.add('urgency');
+      cdEl.classList.add('urgent');
+      msgEl.textContent = rem < 2500 ? 'CLOSING…' : 'CLAIM NOW · CLOSING SOON';
+    } else {
+      if (stage) stage.classList.remove('urgency');
+      cdEl.classList.remove('urgent');
+      msgEl.textContent = 'SPAWN ACTIVE · CLAIM NOW';
+    }
   } else {
     const rem = Math.max(0, state.nextSpawnAt - now);
     tval.textContent = mmss(rem);
     bdg.classList.remove('on');
+    if (stage) { stage.classList.remove('urgency'); cdEl.classList.remove('urgent'); }
     if (rem > 0 && rem < 28000) {
       cdEl.classList.add('on');
       cdEl.textContent = Math.ceil(rem / 1000);
@@ -1647,6 +1881,7 @@ async function poll() {
       _lastSlot = slot;
       renderer?.setEntity(ent, data.serverVitals, _currentClaimCount);
       applyEntity(ent);
+      if (ent) updateSpawnFeed(slot, ent);
       // Trigger sound once per spawn slot
       if (ent && slot !== _lastSonSlot && data.claimable) {
         _lastSonSlot = slot;
