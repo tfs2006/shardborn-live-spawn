@@ -500,6 +500,29 @@ def derive_sonic_fingerprint(entity, nums):
     # Watcher count shapes how deep the meditative state goes.
     binaural_hz = 4.0 + (entity["watchers"] % 40) / 10.0
 
+    # ── Unique DNA: 32-value array derived from entity hash.
+    # This is the ultimate 1-of-1 guarantee — every entity gets a unique
+    # sequence of values that shapes note timing, vibrato depth, filter
+    # sweeps, and stochastic rhythm offsets in the frontend synth engine.
+    entity_hash = entity.get("hash", "")
+    dna = []
+    for i in range(32):
+        # Mix hash chars with different prime strides to avoid periodicity
+        idx = (i * 7 + 3) % max(len(entity_hash), 1)
+        ch = ord(entity_hash[idx]) if idx < len(entity_hash) else (nums[i % len(nums)])
+        dna.append(round((ch % 256) / 255.0, 4))
+
+    # Unique vibrato rate and depth from hash — no two entities wobble the same
+    vibrato_hz = round(3.5 + (nums[12 % len(nums)] / 255.0) * 4.5, 3)   # 3.5-8.0 Hz
+    vibrato_depth = round((nums[14 % len(nums)] / 255.0) * 12.0, 3)      # 0-12 cents
+
+    # Unique filter sweep parameters
+    filter_q = round(0.5 + (nums[16 % len(nums)] / 255.0) * 6.0, 3)     # 0.5-6.5 Q
+    filter_sweep_hz = round(200 + (nums[18 % len(nums)] / 255.0) * 2800, 1)  # 200-3000 Hz
+
+    # Rhythmic swing factor — makes note timing humanly imperfect
+    swing = round(0.4 + (nums[20 % len(nums)] / 255.0) * 0.4, 4)        # 0.4-0.8
+
     return {
         "fundamentalHz":  round(base_hz, 3),
         "scaleMode":      mode,
@@ -512,6 +535,12 @@ def derive_sonic_fingerprint(entity, nums):
         "detuneCents":    round(detune_cents, 3),
         "binauralBeatHz": round(binaural_hz, 2),
         "originFreqTag":  ORIGIN_TAGS.get(entity["origin"], "432 Hz · Universal A"),
+        "dna":            dna,
+        "vibratoHz":      vibrato_hz,
+        "vibratoDepth":   vibrato_depth,
+        "filterQ":        filter_q,
+        "filterSweepHz":  filter_sweep_hz,
+        "swing":          swing,
     }
 
 

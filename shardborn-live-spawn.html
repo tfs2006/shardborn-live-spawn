@@ -1034,10 +1034,17 @@ class SonicEngine {
     const bHz    = sf.binauralBeatHz || 5.5;
     const mode   = sf.scaleMode      || 'dorian';
     const parts  = sf.partialCount   || 3;
+    const dna    = sf.dna            || [];
+    const vibHz  = sf.vibratoHz      || 5.0;
+    const vibD   = sf.vibratoDepth   || 4.0;
+    const fQ     = sf.filterQ        || 2.0;
+    const fSweep = sf.filterSweepHz  || 1200;
+    const swing  = sf.swing          || 0.6;
 
     const totalDur = atkSec + decSec + 3.0;
     const beatSec  = 60.0 / tempo;
     const push = n => this.nodes.push(n);
+    const dnaVal = i => dna.length > 0 ? dna[i % dna.length] : 0.5;
 
     // ── Master envelope ──────────────────────────────────────────
     this.masterGain.gain.cancelScheduledValues(now);
@@ -1046,8 +1053,18 @@ class SonicEngine {
     this.masterGain.gain.setValueAtTime(0.72, now + atkSec + 0.8);
     this.masterGain.gain.exponentialRampToValueAtTime(0.001, now + totalDur);
 
+    // ── Global filter sweep (unique per entity) ──────────────────
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = fQ;
+    filter.frequency.setValueAtTime(200, now);
+    filter.frequency.linearRampToValueAtTime(fSweep, now + atkSec * 0.8);
+    filter.frequency.setValueAtTime(fSweep, now + atkSec + 1.0);
+    filter.frequency.exponentialRampToValueAtTime(300, now + totalDur);
+    filter.connect(this.dryBus);
+    push(filter);
+
     // ── Binaural drone (left/right ears) ─────────────────────────
-    const panNode = ctx.createStereoPanner ? ctx.createStereoPanner : null;
     for (let ch = 0; ch < 2; ch++) {
       const freq = ch === 0 ? fund : fund + bHz;
       const osc  = ctx.createOscillator();
@@ -1055,15 +1072,26 @@ class SonicEngine {
       osc.type            = 'sine';
       osc.frequency.value = freq;
       gn.gain.value       = 0.28;
+
+      // Per-channel vibrato from DNA
+      const vLfo = ctx.createOscillator();
+      const vAmt = ctx.createGain();
+      vLfo.frequency.value = vibHz * (0.85 + dnaVal(ch) * 0.3);
+      vAmt.gain.value = fund * (vibD / 1200);  // cents to Hz
+      vLfo.connect(vAmt);
+      vAmt.connect(osc.frequency);
+      vLfo.start(now); vLfo.stop(now + totalDur);
+      push(vLfo); push(vAmt);
+
       osc.connect(gn);
       if (ctx.createStereoPanner) {
         const pan = ctx.createStereoPanner();
         pan.pan.value = ch === 0 ? -1 : 1;
         gn.connect(pan);
-        pan.connect(this.dryBus);
+        pan.connect(filter);
         push(pan);
       } else {
-        gn.connect(this.dryBus);
+        gn.connect(filter);
       }
       osc.start(now); osc.stop(now + totalDur);
       push(osc); push(gn);
@@ -1081,7 +1109,7 @@ class SonicEngine {
       push(sub); push(gn);
     }
 
-    // ── Harmonic series overtones ─────────────────────────────────
+    // ── Harmonic series overtones (with per-partial vibrato from DNA) ──
     ratios.forEach((ratio, i) => {
       const freq = fund * ratio;
       if (freq > 15000) return;
@@ -1090,51 +1118,62 @@ class SonicEngine {
       osc.type            = i < 2 ? 'sine' : 'triangle';
       osc.frequency.value = freq;
       gn.gain.value       = 0.16 / (i + 1);
+
+      // DNA-driven per-harmonic vibrato — each partial wobbles uniquely
+      const hLfo = ctx.createOscillator();
+      const hAmt = ctx.createGain();
+      hLfo.frequency.value = vibHz * (0.6 + dnaVal(i + 4) * 0.8);
+      hAmt.gain.value = freq * (vibD * dnaVal(i + 8) / 1200);
+      hLfo.connect(hAmt);
+      hAmt.connect(osc.frequency);
+      hLfo.start(now); hLfo.stop(now + totalDur);
+      push(hLfo); push(hAmt);
+
       osc.connect(gn);
-      gn.connect(this.dryBus);
+      gn.connect(filter);
       gn.connect(this.convolver);
       osc.start(now); osc.stop(now + totalDur);
       push(osc); push(gn);
     });
 
-    // ── Melodic scale phrases ─────────────────────────────────────
+    // ── Melodic scale phrases (DNA-shaped timing + pitch bend) ───
     const notes    = this._scaleNotes(mode, fund, 10 + parts * 2);
     const noteCount = Math.min(18, 5 + Math.floor(parts * 2.5));
     for (let i = 0; i < noteCount; i++) {
-      const delayOff = beatSec * i * 0.65;
+      // Swing factor makes note spacing humanly imperfect via DNA
+      const swingOffset = (i % 2 === 1) ? beatSec * swing * dnaVal(i + 16) : 0;
+      const delayOff = beatSec * i * 0.65 + swingOffset;
       if (delayOff > totalDur - 0.6) break;
-      const nFreq = notes[i % notes.length];
+      // DNA-driven micro-pitch bend: ±8 cents per note
+      const microBend = (dnaVal(i + 20) - 0.5) * 16;
+      const nFreq = notes[i % notes.length] * Math.pow(2, microBend / 1200);
       const osc   = ctx.createOscillator();
       const gn    = ctx.createGain();
       osc.type            = 'triangle';
       osc.frequency.value = nFreq;
+      // DNA-driven velocity: each note has unique loudness
+      const velocity = 0.06 + dnaVal(i + 24) * 0.08;
       gn.gain.setValueAtTime(0, now + delayOff);
-      gn.gain.linearRampToValueAtTime(0.11, now + delayOff + 0.06);
+      gn.gain.linearRampToValueAtTime(velocity, now + delayOff + 0.06);
       gn.gain.exponentialRampToValueAtTime(0.0001, now + delayOff + 0.65);
       osc.connect(gn);
-      gn.connect(this.dryBus);
+      gn.connect(filter);
       gn.connect(this.convolver);
       osc.start(now + delayOff);
       osc.stop(now + delayOff + 0.75);
       push(osc); push(gn);
     }
 
-    // ── Slow tremolo LFO (on a dedicated tremolo gain) ────────────
+    // ── Slow tremolo LFO (DNA-tuned rate) ─────────────────────────
     {
-      const tremoloGain = ctx.createGain();
-      tremoloGain.gain.value = 0;
       const lfo = ctx.createOscillator();
       const lfoAmt = ctx.createGain();
-      lfo.frequency.value = 0.25 + (bHz / 25);
-      lfoAmt.gain.value   = 0.035;
-      lfo.connect(lfoAmt);
-      // LFO -> dryBus.gain via tremoloGain is tricky; easier to
-      // modulate a silent pass-through and sum into masterGain.
-      // Instead we modulate the masterGain directly through a const offset.
+      lfo.frequency.value = 0.2 + dnaVal(30) * 0.3 + (bHz / 25);
+      lfoAmt.gain.value   = 0.025 + dnaVal(31) * 0.025;
       lfo.connect(lfoAmt);
       lfoAmt.connect(this.masterGain.gain);
       lfo.start(now); lfo.stop(now + totalDur);
-      push(lfo); push(lfoAmt); push(tremoloGain);
+      push(lfo); push(lfoAmt);
     }
 
     this._endTimer = setTimeout(() => this.stop(), (totalDur + 0.8) * 1000);
@@ -2036,7 +2075,9 @@ function applyEntity(entity) {
     <strong>Tempo</strong> ${sf.tempo} BPM &nbsp;·&nbsp; <strong>Partials</strong> ${sf.partialCount}<br>
     <strong>Attack</strong> ${sf.attackMs}ms &nbsp;·&nbsp; <strong>Decay</strong> ${sf.decayMs}ms<br>
     <strong>Binaural θ-beat</strong> ${sf.binauralBeatHz} Hz<br>
-    ${sf.detuneCents != null ? `<strong>Detune</strong> ${sf.detuneCents > 0 ? '+' : ''}${sf.detuneCents}¢` : ''}
+    ${sf.detuneCents != null ? `<strong>Detune</strong> ${sf.detuneCents > 0 ? '+' : ''}${sf.detuneCents}¢ &nbsp;·&nbsp; ` : ''}
+    ${sf.vibratoHz ? `<strong>Vibrato</strong> ${sf.vibratoHz} Hz / ${sf.vibratoDepth}¢` : ''}<br>
+    ${sf.filterQ ? `<strong>Filter</strong> Q${sf.filterQ} → ${sf.filterSweepHz} Hz &nbsp;·&nbsp; <strong>Swing</strong> ${sf.swing}` : ''}
   `;
 
   el('e-sv').textContent   = entity.shareValue;
@@ -2176,6 +2217,13 @@ function makeFallbackSonic(entity) {
   const ratios = Array.from({length: parts}, (_, i) => i + 1);
   const binaural = 4 + (entity.watchers % 40) / 10;
   const mood   = entity.temperament ? entity.temperament.toLowerCase() : 'meditative';
+  // Generate fallback DNA from entity ID hash to still get some uniqueness
+  const idStr = entity.id || entity.name || '';
+  const fbDna = [];
+  for (let i = 0; i < 32; i++) {
+    const ch = idStr.charCodeAt((i * 7 + 3) % Math.max(idStr.length, 1)) || 64;
+    fbDna.push(Math.round(((ch % 256) / 255) * 10000) / 10000);
+  }
   return {
     fundamentalHz:  base,
     scaleMode:      _TMODES[entity.temperament] || 'dorian',
@@ -2188,6 +2236,12 @@ function makeFallbackSonic(entity) {
     detuneCents:    null,
     binauralBeatHz: Math.round(binaural * 100) / 100,
     originFreqTag:  _ORIGIN_TAG[entity.origin] || '432 Hz · Universal',
+    dna:            fbDna,
+    vibratoHz:      5.0,
+    vibratoDepth:   4.0,
+    filterQ:        2.0,
+    filterSweepHz:  1200,
+    swing:          0.6,
   };
 }
 
@@ -2582,17 +2636,22 @@ ${claimCount > 0 ? `<div class="claimline">${claimCount} collector${claimCount !
   <div class="cell"><div class="cl">Anomaly</div><div class="cv">${entity.anomaly}</div></div>
 </div>
 <div class="sf">
-  <div class="cl">Sonic Fingerprint</div>
+  <div class="cl">Sonic Fingerprint · 1 of 1</div>
   <div class="cv">${sf.fundamentalHz.toFixed(2)} Hz \u00b7 ${sf.originFreqTag || ''}<br>
     Mode: ${sf.scaleMode} \u00b7 Mood: ${sf.moodTag}<br>
     Tempo: ${sf.tempo} BPM \u00b7 Partials: ${sf.partialCount}<br>
-    Binaural \u03b8-beat: ${sf.binauralBeatHz} Hz</div>
+    Binaural \u03b8-beat: ${sf.binauralBeatHz} Hz<br>
+    Vibrato: ${sf.vibratoHz || '?'} Hz \u00b7 Depth: ${sf.vibratoDepth || '?'}\u00a2<br>
+    Filter Q: ${sf.filterQ || '?'} \u00b7 Sweep: ${sf.filterSweepHz || '?'} Hz<br>
+    Swing: ${sf.swing || '?'} \u00b7 Detune: ${sf.detuneCents != null ? (sf.detuneCents > 0 ? '+' : '') + sf.detuneCents.toFixed(1) + '\u00a2' : 'N/A'}<br>
+    DNA: ${(sf.dna || []).slice(0, 8).map(v => v.toFixed(2)).join(' ')}${(sf.dna || []).length > 8 ? ' \u2026' : ''}</div>
 </div>
 <button class="snd-btn" id="snd-btn" onclick="playSonic()">\u266a PLAY SONIC FINGERPRINT</button>
 <div class="meta">
   Claimed by: <strong style="color:#c4ccdf">${collector}</strong><br>
   Born: ${bornStr}<br>
   Share Value: ${entity.shareValue}<br>
+  Lore: <em style="color:#8890aa">${(entity.lore || '').replace(/"/g, '&quot;').replace(/</g, '&lt;')}</em><br>
   Downloaded: ${genStr}
 </div>
 </div>
@@ -2682,21 +2741,110 @@ function organic(t,seed){
   }
   draw();
 })();
-// Minimal sonic engine for card playback
+// Full sonic engine for card playback — reproduces exact 1-of-1 living sound
 let _actx=null,_sNodes=[],_playing=false;
+const SCALES={dorian:[0,2,3,5,7,9,10],phrygian:[0,1,3,5,7,8,10],aeolian:[0,2,3,5,7,8,10],lydian:[0,2,4,6,7,9,11],phrygian_dominant:[0,1,4,5,7,8,10],pentatonic_minor:[0,3,5,7,10],whole_tone:[0,2,4,6,8,10],locrian:[0,1,3,5,6,8,10]};
+function semiratio(s){return Math.pow(2,s/12);}
+function scaleNotes(mode,root,cnt){const iv=SCALES[mode]||SCALES.dorian;const n=[];for(let i=0;i<cnt;i++)n.push(root*semiratio(iv[i%iv.length]+12*Math.floor(i/iv.length)));return n;}
 function playSonic(){
   const btn=document.getElementById('snd-btn');
-  if(_playing){_sNodes.forEach(n=>{try{n.stop();}catch(e){}});_sNodes=[];_playing=false;btn.textContent='\u266a PLAY SONIC FINGERPRINT';btn.classList.remove('playing');return;}
+  if(_playing){_sNodes.forEach(n=>{try{n.stop();}catch(e){}try{n.disconnect();}catch(e){}});_sNodes=[];_playing=false;btn.textContent='\\u266a PLAY SONIC FINGERPRINT';btn.classList.remove('playing');return;}
   if(!_actx)_actx=new(window.AudioContext||window.webkitAudioContext)();
-  const actx=_actx;
-  const master=actx.createGain();master.gain.value=0.22;master.connect(actx.destination);
-  function osc(freq,type,vol,dur){const o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(vol,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+dur);o.connect(g);g.connect(master);o.start();o.stop(actx.currentTime+dur);_sNodes.push(o);}
-  osc(SF.fundamentalHz,'sine',0.5,9);
-  osc(SF.fundamentalHz*2,'sine',0.25,9);
-  osc(SF.fundamentalHz*3,'triangle',0.12,7);
-  osc(SF.fundamentalHz*(1+SF.binauralBeatHz/SF.fundamentalHz),'sine',0.15,9);
-  _playing=true;btn.textContent='\u25a0 STOP';btn.classList.add('playing');
-  setTimeout(()=>{_playing=false;btn.textContent='\u266a PLAY SONIC FINGERPRINT';btn.classList.remove('playing');},9200);
+  if(_actx.state==='suspended')_actx.resume();
+  const ctx=_actx,now=ctx.currentTime;
+  const fund=SF.fundamentalHz||432,ratios=SF.harmonicRatios||[1,2,3],tempo=SF.tempo||52;
+  const atkSec=(SF.attackMs||800)/1000,decSec=(SF.decayMs||4000)/1000;
+  const bHz=SF.binauralBeatHz||5.5,mode=SF.scaleMode||'dorian',parts=SF.partialCount||3;
+  const dna=SF.dna||[],vibHz=SF.vibratoHz||5,vibD=SF.vibratoDepth||4;
+  const fQ=SF.filterQ||2,fSweep=SF.filterSweepHz||1200,swing=SF.swing||0.6;
+  const totalDur=atkSec+decSec+3;const beatSec=60/tempo;
+  const dv=i=>dna.length>0?dna[i%dna.length]:0.5;
+  const push=n=>_sNodes.push(n);
+
+  // Impulse reverb
+  const irLen=Math.floor(ctx.sampleRate*3.5);const irBuf=ctx.createBuffer(2,irLen,ctx.sampleRate);
+  for(let ch=0;ch<2;ch++){const d=irBuf.getChannelData(ch);for(let i=0;i<irLen;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/irLen,0.72);}
+  const conv=ctx.createConvolver();conv.buffer=irBuf;
+  const dry=ctx.createGain();dry.gain.value=0.62;
+  const wet=ctx.createGain();wet.gain.value=0.38;
+  conv.connect(wet);
+  const master=ctx.createGain();
+  dry.connect(master);wet.connect(master);master.connect(ctx.destination);
+
+  // Master envelope
+  master.gain.setValueAtTime(0,now);
+  master.gain.linearRampToValueAtTime(0.72,now+atkSec);
+  master.gain.setValueAtTime(0.72,now+atkSec+0.8);
+  master.gain.exponentialRampToValueAtTime(0.001,now+totalDur);
+
+  // Filter sweep
+  const flt=ctx.createBiquadFilter();flt.type='lowpass';flt.Q.value=fQ;
+  flt.frequency.setValueAtTime(200,now);
+  flt.frequency.linearRampToValueAtTime(fSweep,now+atkSec*0.8);
+  flt.frequency.setValueAtTime(fSweep,now+atkSec+1);
+  flt.frequency.exponentialRampToValueAtTime(300,now+totalDur);
+  flt.connect(dry);push(flt);
+
+  // Binaural drone with vibrato
+  for(let ch=0;ch<2;ch++){
+    const freq=ch===0?fund:fund+bHz;
+    const osc=ctx.createOscillator();const gn=ctx.createGain();
+    osc.type='sine';osc.frequency.value=freq;gn.gain.value=0.28;
+    const vLfo=ctx.createOscillator();const vAmt=ctx.createGain();
+    vLfo.frequency.value=vibHz*(0.85+dv(ch)*0.3);
+    vAmt.gain.value=fund*(vibD/1200);
+    vLfo.connect(vAmt);vAmt.connect(osc.frequency);
+    vLfo.start(now);vLfo.stop(now+totalDur);push(vLfo);push(vAmt);
+    osc.connect(gn);
+    if(ctx.createStereoPanner){const pan=ctx.createStereoPanner();pan.pan.value=ch===0?-1:1;gn.connect(pan);pan.connect(flt);push(pan);}
+    else{gn.connect(flt);}
+    osc.start(now);osc.stop(now+totalDur);push(osc);push(gn);
+  }
+
+  // Sub-bass
+  {const sub=ctx.createOscillator();const gn=ctx.createGain();sub.type='sine';sub.frequency.value=fund/2;gn.gain.value=0.16;sub.connect(gn);gn.connect(dry);sub.start(now);sub.stop(now+totalDur);push(sub);push(gn);}
+
+  // Harmonic series with per-partial vibrato
+  ratios.forEach((ratio,i)=>{
+    const freq=fund*ratio;if(freq>15000)return;
+    const osc=ctx.createOscillator();const gn=ctx.createGain();
+    osc.type=i<2?'sine':'triangle';osc.frequency.value=freq;gn.gain.value=0.16/(i+1);
+    const hLfo=ctx.createOscillator();const hAmt=ctx.createGain();
+    hLfo.frequency.value=vibHz*(0.6+dv(i+4)*0.8);
+    hAmt.gain.value=freq*(vibD*dv(i+8)/1200);
+    hLfo.connect(hAmt);hAmt.connect(osc.frequency);
+    hLfo.start(now);hLfo.stop(now+totalDur);push(hLfo);push(hAmt);
+    osc.connect(gn);gn.connect(flt);gn.connect(conv);
+    osc.start(now);osc.stop(now+totalDur);push(osc);push(gn);
+  });
+
+  // Melodic phrases with DNA swing + pitch bend
+  const notes=scaleNotes(mode,fund,10+parts*2);
+  const noteCount=Math.min(18,5+Math.floor(parts*2.5));
+  for(let i=0;i<noteCount;i++){
+    const swOff=(i%2===1)?beatSec*swing*dv(i+16):0;
+    const delayOff=beatSec*i*0.65+swOff;
+    if(delayOff>totalDur-0.6)break;
+    const microBend=(dv(i+20)-0.5)*16;
+    const nFreq=notes[i%notes.length]*Math.pow(2,microBend/1200);
+    const osc=ctx.createOscillator();const gn=ctx.createGain();
+    osc.type='triangle';osc.frequency.value=nFreq;
+    const vel=0.06+dv(i+24)*0.08;
+    gn.gain.setValueAtTime(0,now+delayOff);
+    gn.gain.linearRampToValueAtTime(vel,now+delayOff+0.06);
+    gn.gain.exponentialRampToValueAtTime(0.0001,now+delayOff+0.65);
+    osc.connect(gn);gn.connect(flt);gn.connect(conv);
+    osc.start(now+delayOff);osc.stop(now+delayOff+0.75);push(osc);push(gn);
+  }
+
+  // DNA-tuned tremolo
+  {const lfo=ctx.createOscillator();const lAmt=ctx.createGain();
+  lfo.frequency.value=0.2+dv(30)*0.3+(bHz/25);lAmt.gain.value=0.025+dv(31)*0.025;
+  lfo.connect(lAmt);lAmt.connect(master.gain);
+  lfo.start(now);lfo.stop(now+totalDur);push(lfo);push(lAmt);}
+
+  _playing=true;btn.textContent='\\u25a0 STOP';btn.classList.add('playing');
+  setTimeout(()=>{_sNodes.forEach(n=>{try{n.stop();}catch(e){}try{n.disconnect();}catch(e){}});_sNodes=[];_playing=false;btn.textContent='\\u266a PLAY SONIC FINGERPRINT';btn.classList.remove('playing');},totalDur*1000+800);
 }
 <\/script>
 </body></html>`;
