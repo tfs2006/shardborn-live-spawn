@@ -16,6 +16,8 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 # ── Server organism bookkeeping ───────────────────────────────────────────────
 _start_time = time.time()
@@ -33,6 +35,7 @@ INFLUENCE_SECRET = os.getenv("SHARDBORN_INFLUENCE_SECRET", SERVER_SECRET)
 INFLUENCE_MAX_AGE_MS = int(os.getenv("SHARDBORN_INFLUENCE_MAX_AGE_MS", "180000"))
 INFLUENCE_WEIGHT = float(os.getenv("SHARDBORN_INFLUENCE_WEIGHT", "0.35"))
 INFLUENCE_SIGNATURE_TTL_MS = int(os.getenv("SHARDBORN_INFLUENCE_SIGNATURE_TTL_MS", "120000"))
+CLAWSTREET_ALLOWED_PORTS = {"8790", "8791", "8792", "8793"}
 
 TRAITS = {
     "origin": ["Ash", "Tide", "Bloom", "Static", "Dusk", "Void", "Aurora", "Iron", "Glass", "Storm"],
@@ -1126,6 +1129,39 @@ class Handler(BaseHTTPRequestHandler):
 </body>
 </html>
 """)
+            return
+
+        if parsed.path == "/clawstreet/state":
+            query = parse_qs(parsed.query)
+            port = str(query.get("port", ["8790"])[0]).strip()
+            if port not in CLAWSTREET_ALLOWED_PORTS:
+                self._send_json({
+                    "ok": False,
+                    "error": "invalid-port",
+                    "allowedPorts": sorted(CLAWSTREET_ALLOWED_PORTS),
+                }, status=400)
+                return
+
+            upstream_url = f"http://127.0.0.1:{port}/api/state"
+            try:
+                req = urllib_request.Request(upstream_url, headers={"Accept": "application/json"})
+                with urllib_request.urlopen(req, timeout=5) as upstream:
+                    text = upstream.read().decode("utf-8")
+                self._send_json(json.loads(text))
+            except urllib_error.HTTPError as err:
+                details = err.read().decode("utf-8", errors="ignore")[:400]
+                self._send_json({
+                    "ok": False,
+                    "error": "upstream-http-error",
+                    "status": err.code,
+                    "details": details,
+                }, status=502)
+            except Exception as err:
+                self._send_json({
+                    "ok": False,
+                    "error": "upstream-unreachable",
+                    "details": str(err),
+                }, status=502)
             return
 
         if parsed.path == "/health":
