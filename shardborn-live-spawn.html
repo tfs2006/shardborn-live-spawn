@@ -172,6 +172,17 @@
     }
     .chip .cl { font-size: 0.56rem; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
     .chip .cv { font-family: 'Space Mono', monospace; font-size: 0.82rem; color: var(--text); margin-top: 0.12rem; }
+    .pulse-on { color: var(--claim) !important; }
+    .pulse-off { color: #fbbf24 !important; }
+    #pulse-bias {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.63rem;
+      letter-spacing: 0.06em;
+      color: var(--dim);
+      margin-top: 0.35rem;
+      text-align: center;
+      min-height: 1.1rem;
+    }
     #resonance { font-size: 0.68rem; font-style: italic; color: var(--dim); text-align: center; padding: 0.25rem 0; }
     #freq-tag { font-size: 0.62rem; color: var(--accent); font-family: 'Space Mono', monospace; text-align: center; letter-spacing: 0.05em; min-height: 1.2rem; }
 
@@ -688,6 +699,16 @@
     </div>
     <div id="resonance">—</div>
     <div id="freq-tag"></div>
+
+    <div class="p-title" style="margin-top:0.65rem">Bot Pulse</div>
+    <div class="sigs">
+      <div class="chip"><div class="cl">Influence</div><div class="cv" id="p-active">--</div></div>
+      <div class="chip"><div class="cl">Confidence</div><div class="cv" id="p-confidence">--</div></div>
+      <div class="chip"><div class="cl">Blend</div><div class="cv" id="p-blend">--</div></div>
+      <div class="chip"><div class="cl">Age</div><div class="cv" id="p-age">--</div></div>
+      <div class="chip" style="grid-column:1 / -1"><div class="cl">Source</div><div class="cv" id="p-source">--</div></div>
+    </div>
+    <div id="pulse-bias">bias —</div>
 
     <div class="p-title" style="margin-top:0.65rem">Ecology</div>
     <div class="vrow">
@@ -1985,6 +2006,13 @@ function fmtUptime(s) {
 }
 function el(id) { return document.getElementById(id); }
 
+function fmtAgeMs(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '--';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
+  return `${Math.round(ms / 60000)}m`;
+}
+
 // ── UI UPDATES ───────────────────────────────────────────────────────────────
 function applyVitals(vitals, signals) {
   // Derive all metrics — use real vitals when present, otherwise synthesise
@@ -2026,6 +2054,23 @@ function applyVitals(vitals, signals) {
     const wb = el('v-watch2'); if (wb) wb.textContent = signals.watchers;
     const wbf = el('wb-watch'); if (wbf) wbf.style.width = wp + '%';
   }
+}
+
+function applyInfluence(influence) {
+  const inf = influence || { active: false };
+  const bias = inf.bias || {};
+  const active = !!inf.active;
+  const activeEl = el('p-active');
+
+  activeEl.textContent = active ? 'ACTIVE' : 'IDLE';
+  activeEl.classList.toggle('pulse-on', active);
+  activeEl.classList.toggle('pulse-off', !active);
+
+  el('p-confidence').textContent = `${Math.round(Number(inf.confidence || 0))}%`;
+  el('p-blend').textContent = Number(inf.blend || 0).toFixed(3);
+  el('p-age').textContent = fmtAgeMs(Number(inf.ageMs));
+  el('p-source').textContent = inf.source || 'none';
+  el('pulse-bias').textContent = `bias p:${Math.round(Number(bias.pressure || 0))} w:${Math.round(Number(bias.watchers || 0))} s:${Math.round(Number(bias.streak || 0))}`;
 }
 
 function applyEntity(entity) {
@@ -2448,6 +2493,7 @@ async function poll() {
 
     _liveState = data;
     applyVitals(data.serverVitals, data.signals);
+    applyInfluence(data.influence);
     applyTimer(data);
     applyWorldstate(data.worldstate, data.omens, data.claimable);
     applyDramaturgy(data.dramaturgy);

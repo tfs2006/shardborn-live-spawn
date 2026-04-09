@@ -29,6 +29,10 @@ CYCLE_MS = int(os.getenv("SHARDBORN_CYCLE_MS", "48000"))
 CLAIM_WINDOW_MS = int(os.getenv("SHARDBORN_CLAIM_WINDOW_MS", "14000"))
 SEED_EPOCH_MS = int(os.getenv("SHARDBORN_EPOCH_MS", "1735689600000"))
 SERVER_SECRET = os.getenv("SHARDBORN_SECRET", "change-this-in-env")
+INFLUENCE_SECRET = os.getenv("SHARDBORN_INFLUENCE_SECRET", SERVER_SECRET)
+INFLUENCE_MAX_AGE_MS = int(os.getenv("SHARDBORN_INFLUENCE_MAX_AGE_MS", "180000"))
+INFLUENCE_WEIGHT = float(os.getenv("SHARDBORN_INFLUENCE_WEIGHT", "0.35"))
+INFLUENCE_SIGNATURE_TTL_MS = int(os.getenv("SHARDBORN_INFLUENCE_SIGNATURE_TTL_MS", "120000"))
 
 TRAITS = {
     "origin": ["Ash", "Tide", "Bloom", "Static", "Dusk", "Void", "Aurora", "Iron", "Glass", "Storm"],
@@ -44,6 +48,9 @@ TRAITS = {
 RARITY_WEIGHTS = {"Common": 1, "Uncommon": 2, "Rare": 3, "Epic": 4, "Legendary": 5, "Mythic": 6}
 
 CLAIMS = {}
+
+_influence_lock = threading.Lock()
+_latest_influence = None
 
 # ── Anti-Bot Defense ──────────────────────────────────────────────────────────
 # Rate limiting per IP, proof-of-presence challenges, and claim timing validation.
@@ -107,6 +114,111 @@ def _verify_challenge(token, user_answer, ip, ts_ms):
     if int(user_answer) != challenge["answer"]:
         return False, "Incorrect answer."
     return True, None
+
+
+def _to_float(value, default=0.0):
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _to_int(value, default=0):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _verify_influence_signature(headers, raw_body):
+    ts_str = headers.get("X-SB-Timestamp", "")
+    nonce = headers.get("X-SB-Nonce", "")
+    signature = headers.get("X-SB-Signature", "")
+
+    if not ts_str or not nonce or not signature:
+        return False, "Missing signature headers.", None
+
+    try:
+        ts = int(ts_str)
+    except Exception:
+        return False, "Invalid signature timestamp.", None
+
+    now = now_ms()
+    if abs(now - ts) > INFLUENCE_SIGNATURE_TTL_MS:
+        return False, "Signature timestamp expired.", None
+
+    try:
+        body_text = raw_body.decode("utf-8")
+    except Exception:
+        return False, "Body must be UTF-8 JSON.", None
+
+    message = f"{ts}.{nonce}.{body_text}".encode("utf-8")
+    expected = hmac.new(INFLUENCE_SECRET.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, str(signature).strip().lower()):
+        return False, "Invalid signature.", None
+
+    return True, "", ts
+
+
+def _normalize_influence_payload(payload, source_ip, received_at_ms):
+    influence = payload.get("influence") if isinstance(payload, dict) else None
+    influence = influence if isinstance(influence, dict) else {}
+    source = str(payload.get("source", "unknown"))[:64] if isinstance(payload, dict) else "unknown"
+    reported_at = _to_int(payload.get("timestamp", received_at_ms), received_at_ms) if isinstance(payload, dict) else received_at_ms
+
+    return {
+        "source": source,
+        "reportedAt": reported_at,
+        "receivedAt": received_at_ms,
+        "fromIp": source_ip,
+        "pressureBias": clamp(_to_float(influence.get("pressureBias", 0.0)), -100.0, 100.0),
+        "watchersBias": clamp(_to_float(influence.get("watchersBias", 0.0)), -100.0, 100.0),
+        "streakBias": clamp(_to_float(influence.get("streakBias", 0.0)), -100.0, 100.0),
+        "confidence": clamp(_to_float(influence.get("confidence", 0.0)), 0.0, 100.0),
+        "metrics": influence.get("metrics", {}),
+    }
+
+
+def _compute_influence_blend(ts_ms):
+    with _influence_lock:
+        snapshot = dict(_latest_influence) if _latest_influence else None
+
+    if not snapshot:
+        return None, 0, 0.0
+
+    age_ms = max(0, ts_ms - _to_int(snapshot.get("receivedAt", ts_ms), ts_ms))
+    if age_ms > INFLUENCE_MAX_AGE_MS:
+        return None, age_ms, 0.0
+
+    freshness = 1.0 - (age_ms / max(1, INFLUENCE_MAX_AGE_MS))
+    confidence = clamp(_to_float(snapshot.get("confidence", 0.0)) / 100.0, 0.0, 1.0)
+    blend = clamp(INFLUENCE_WEIGHT, 0.0, 1.0) * freshness * confidence
+    return snapshot, age_ms, blend
+
+
+def _apply_external_influence(base_pressure, base_watchers, base_streak, ts_ms):
+    snapshot, age_ms, blend = _compute_influence_blend(ts_ms)
+    if not snapshot or blend <= 0.0:
+        return base_pressure, base_watchers, base_streak, {"active": False}
+
+    pressure = clamp(int(round(base_pressure + ((snapshot["pressureBias"] / 100.0) * 20.0 * blend))), 22, 98)
+    watchers = clamp(int(round(base_watchers + ((snapshot["watchersBias"] / 100.0) * 220.0 * blend))), 96, 999)
+    streak = clamp(int(round(base_streak + ((snapshot["streakBias"] / 100.0) * 6.0 * blend))), 7, 27)
+
+    return pressure, watchers, streak, {
+        "active": True,
+        "source": snapshot.get("source", "unknown"),
+        "reportedAt": snapshot.get("reportedAt"),
+        "receivedAt": snapshot.get("receivedAt"),
+        "ageMs": age_ms,
+        "confidence": round(_to_float(snapshot.get("confidence", 0.0)), 2),
+        "blend": round(blend, 4),
+        "bias": {
+            "pressure": round(_to_float(snapshot.get("pressureBias", 0.0)), 3),
+            "watchers": round(_to_float(snapshot.get("watchersBias", 0.0)), 3),
+            "streak": round(_to_float(snapshot.get("streakBias", 0.0)), 3),
+        },
+    }
 
 # ── Worldstate Engine ─────────────────────────────────────────────────────────
 # The ecology is a multi-layer simulation governing environmental conditions.
@@ -739,9 +851,11 @@ def compute_live_state(ts_ms):
     offset      = ts_ms - slot_start
     cycle_phase = max(0, min(CYCLE_MS, offset))
 
-    pressure = clamp(int(68 + 19 * math.sin(slot / 5.0) + 8 * math.sin(slot / 13.0)), 22, 98)
-    watchers = clamp(int(170 + 80 * (1 + math.sin(slot / 4.1)) + (slot % 57)), 96, 999)
-    streak   = 7 + (slot % 21)
+    base_pressure = clamp(int(68 + 19 * math.sin(slot / 5.0) + 8 * math.sin(slot / 13.0)), 22, 98)
+    base_watchers = clamp(int(170 + 80 * (1 + math.sin(slot / 4.1)) + (slot % 57)), 96, 999)
+    base_streak = 7 + (slot % 21)
+
+    pressure, watchers, streak, influence_meta = _apply_external_influence(base_pressure, base_watchers, base_streak, ts_ms)
 
     worldstate = compute_worldstate(ts_ms, slot)
 
@@ -773,6 +887,7 @@ def compute_live_state(ts_ms):
             "streak":    streak,
             "resonance": resonance_label(pressure, watchers % 8),
         },
+        "influence": influence_meta,
         "serverVitals": server_vitals(),
     }
 
@@ -788,7 +903,20 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin",  "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-SB-Timestamp, X-SB-Nonce, X-SB-Signature")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_html(self, html, status=200):
+        global _request_count
+        with _request_lock:
+            _request_count += 1
+        body = html.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -797,9 +925,214 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path in ("/", "/pulse"):
+            self._send_html("""<!doctype html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>Shardborn Pulse</title>
+    <style>
+        :root {
+            --bg: #070b14;
+            --panel: #0f1729;
+            --ink: #eef4ff;
+            --muted: #8ca2c7;
+            --line: #283451;
+            --ok: #40e0a3;
+            --warn: #ffd166;
+            --off: #ff6b6b;
+            --accentA: #31c0ff;
+            --accentB: #7af0c6;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(1200px 500px at 15% 0%, rgba(49,192,255,.20), transparent 55%),
+                radial-gradient(900px 500px at 85% 100%, rgba(122,240,198,.14), transparent 62%),
+                linear-gradient(165deg, #050811 0%, #0b1222 55%, #070b14 100%);
+            padding: 18px;
+        }
+        .card {
+            width: min(560px, 96vw);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: linear-gradient(180deg, rgba(17,26,46,.90), rgba(8,13,25,.92));
+            box-shadow: 0 18px 50px rgba(0,0,0,.4);
+            overflow: hidden;
+            animation: reveal .4s ease-out;
+        }
+        @keyframes reveal {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .head {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .title {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: .4px;
+            text-transform: uppercase;
+            margin: 0;
+        }
+        .tag {
+            font-size: 12px;
+            color: var(--muted);
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 4px 10px;
+            white-space: nowrap;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            padding: 14px;
+        }
+        .tile {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 11px 12px;
+            background: rgba(9,14,27,.65);
+        }
+        .k {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .6px;
+        }
+        .v {
+            margin-top: 6px;
+            font-size: 22px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+        .bar {
+            margin: 14px;
+            height: 8px;
+            border-radius: 999px;
+            background: #0b1222;
+            border: 1px solid var(--line);
+            overflow: hidden;
+        }
+        .fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accentA), var(--accentB));
+            transition: width .4s ease;
+        }
+        .foot {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 0 14px 14px;
+            color: var(--muted);
+            font-size: 12px;
+            flex-wrap: wrap;
+        }
+        .dot {
+            display: inline-flex;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            box-shadow: 0 0 10px rgba(255,255,255,.25);
+            vertical-align: middle;
+        }
+        @media (max-width: 520px) {
+            .grid { grid-template-columns: 1fr; }
+            .v { font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <section class=\"card\">
+        <header class=\"head\">
+            <h1 class=\"title\">Shardborn Bot Pulse</h1>
+            <div id=\"source\" class=\"tag\">source: waiting</div>
+        </header>
+        <div class=\"grid\">
+            <article class=\"tile\"><div class=\"k\">Influence</div><div id=\"active\" class=\"v\">-</div></article>
+            <article class=\"tile\"><div class=\"k\">Confidence</div><div id=\"confidence\" class=\"v\">-</div></article>
+            <article class=\"tile\"><div class=\"k\">Blend Weight</div><div id=\"blend\" class=\"v\">-</div></article>
+            <article class=\"tile\"><div class=\"k\">Age</div><div id=\"age\" class=\"v\">-</div></article>
+            <article class=\"tile\"><div class=\"k\">Pressure / Watchers / Streak</div><div id=\"bias\" class=\"v\">-</div></article>
+            <article class=\"tile\"><div class=\"k\">Resonance</div><div id=\"resonance\" class=\"v\">-</div></article>
+        </div>
+        <div class=\"bar\"><div id=\"meter\" class=\"fill\"></div></div>
+        <footer class=\"foot\">
+            <div><span id=\"dot\" class=\"dot\"></span><span id=\"status\">connecting</span></div>
+            <div id=\"updated\">updated: -</div>
+        </footer>
+    </section>
+
+    <script>
+        const el = (id) => document.getElementById(id);
+
+        function fmtAge(ms) {
+            if (!Number.isFinite(ms)) return "-";
+            if (ms < 1000) return `${ms}ms`;
+            if (ms < 60000) return `${Math.round(ms / 1000)}s`;
+            return `${Math.round(ms / 60000)}m`;
+        }
+
+        function setStatus(ok, txt) {
+            el("status").textContent = txt;
+            el("dot").style.background = ok ? "var(--ok)" : "var(--off)";
+        }
+
+        async function tick() {
+            try {
+                const r = await fetch("/state", { cache: "no-store" });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const s = await r.json();
+                const inf = s.influence || { active: false };
+                const b = inf.bias || {};
+                const conf = Number(inf.confidence || 0);
+                const blend = Number(inf.blend || 0);
+                const active = Boolean(inf.active);
+
+                el("active").textContent = active ? "ACTIVE" : "IDLE";
+                el("active").style.color = active ? "var(--ok)" : "var(--warn)";
+                el("confidence").textContent = `${Math.round(conf)}%`;
+                el("blend").textContent = blend.toFixed(3);
+                el("age").textContent = fmtAge(Number(inf.ageMs));
+                el("bias").textContent = `${Math.round(Number(b.pressure || 0))} / ${Math.round(Number(b.watchers || 0))} / ${Math.round(Number(b.streak || 0))}`;
+                el("resonance").textContent = (s.signals && s.signals.resonance) ? s.signals.resonance : "-";
+                el("source").textContent = `source: ${inf.source || "none"}`;
+                el("meter").style.width = `${Math.max(0, Math.min(100, conf))}%`;
+                el("updated").textContent = `updated: ${new Date().toLocaleTimeString()}`;
+                setStatus(true, active ? "live influence streaming" : "running without external influence");
+            } catch (e) {
+                setStatus(false, `stream error: ${e.message}`);
+            }
+        }
+
+        tick();
+        setInterval(tick, 3000);
+    </script>
+</body>
+</html>
+""")
+            return
+
         if parsed.path == "/health":
+            _, _, blend = _compute_influence_blend(now_ms())
             self._send_json({"ok": True, "service": "shardborn-live",
-                             "time": now_ms(), "vitals": server_vitals()})
+                             "time": now_ms(), "vitals": server_vitals(),
+                             "influenceActive": blend > 0.0})
             return
 
         if parsed.path == "/state":
@@ -874,6 +1207,37 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+
+        if parsed.path == "/influence":
+            global _latest_influence
+
+            body_len = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(body_len) if body_len > 0 else b"{}"
+
+            ok, err, _ = _verify_influence_signature(self.headers, raw)
+            if not ok:
+                self._send_json({"ok": False, "error": err}, status=403)
+                return
+
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except Exception:
+                self._send_json({"ok": False, "error": "Invalid JSON body."}, status=400)
+                return
+
+            ts = now_ms()
+            snapshot = _normalize_influence_payload(payload, _get_client_ip(self), ts)
+            with _influence_lock:
+                _latest_influence = snapshot
+
+            self._send_json({
+                "ok": True,
+                "acceptedAt": ts,
+                "activeForMs": INFLUENCE_MAX_AGE_MS,
+                "source": snapshot.get("source"),
+                "confidence": snapshot.get("confidence"),
+            })
+            return
 
         if parsed.path == "/challenge":
             # Issue a proof-of-presence challenge for claiming
