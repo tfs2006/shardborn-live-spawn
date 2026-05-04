@@ -1,3 +1,5 @@
+const { getOracleLiveBase } = require("./_oracle");
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -5,7 +7,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const base = (process.env.ORACLE_LIVE_URL || "http://158.101.2.37:9797").trim();
+  const base = getOracleLiveBase();
 
   try {
     const upstream = await fetch(`${base}/leaderboard`);

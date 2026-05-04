@@ -1,8 +1,9 @@
 const http = require("http");
+const { getOracleLiveBase } = require("./_oracle");
 
 module.exports = async (req, res) => {
   const count = req.query.count || "20";
-  const url = `http://158.101.2.37:9797/history?count=${encodeURIComponent(count)}`;
+  const url = `${getOracleLiveBase()}/history?count=${encodeURIComponent(count)}`;
   return new Promise((resolve) => {
     http.get(url, { timeout: 8000 }, (upstream) => {
       let data = "";

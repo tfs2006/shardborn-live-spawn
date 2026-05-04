@@ -1,5 +1,7 @@
+const { getOracleLiveBase } = require("./_oracle");
+
 module.exports = async function handler(req, res) {
-  const base = (process.env.ORACLE_LIVE_URL || "http://158.101.2.37:9797").trim();
+  const base = getOracleLiveBase();
 
   try {
     const upstream = await fetch(`${base}/state`, {
